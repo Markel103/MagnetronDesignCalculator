@@ -1349,6 +1349,20 @@ def create_app():
     if Flask is None:
         raise RuntimeError("Flask is not installed. Install it with: pip install flask")
 
+    def _json_sanitize(obj):
+        """Recursively convert non-finite floats (NaN/±Inf) to None for strict JSON."""
+        if obj is None:
+            return None
+        if isinstance(obj, float):
+            return obj if math.isfinite(obj) else None
+        if isinstance(obj, (str, int, bool)):
+            return obj
+        if isinstance(obj, dict):
+            return {k: _json_sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_json_sanitize(v) for v in obj]
+        return obj
+
     app = Flask(__name__)
 
     # UI template moved to templates/magnetron_design.html
@@ -1465,7 +1479,7 @@ def create_app():
         try:
             inputs = _resolve_design_inputs(raw_params)
             payload = compute_design_payload(inputs)
-            return jsonify(payload)
+            return jsonify(_json_sanitize(payload))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
         except Exception as exc:  # pragma: no cover - defensive API guard

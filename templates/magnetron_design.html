@@ -892,11 +892,11 @@
             }
 
             const collinsParams = [
-                { key: "b", name: "b = B/B̄", value: Number(rec.b), digits: 3, rangeDigits: 3 },
-                { key: "v", name: "v = V/V̄", value: Number(rec.v), digits: 4, rangeDigits: 4 },
-                { key: "i", name: "i = I/Ī", value: Number(rec.ii), digits: 4, rangeDigits: 4 },
-                { key: "g", name: "g = G_L/Ḡ", value: Number(rec.g), digits: 4, rangeDigits: 4 },
-                { key: "p", name: "p = P/P̄", value: Number(rec.p), digits: 4, rangeDigits: 4 },
+                { key: "b", name: "b = B/B̄", value: rec.b, digits: 3, rangeDigits: 3 },
+                { key: "v", name: "v = V/V̄", value: rec.v, digits: 4, rangeDigits: 4 },
+                { key: "i", name: "i = I/Ī", value: rec.ii, digits: 4, rangeDigits: 4 },
+                { key: "g", name: "g = G_L/Ḡ", value: rec.g, digits: 4, rangeDigits: 4 },
+                { key: "p", name: "p = P/P̄", value: rec.p, digits: 4, rangeDigits: 4 },
             ];
 
             collinsBodyEl.innerHTML = "";
@@ -1538,7 +1538,9 @@
                 const statusText = issueText(row.issues);
                 const jc = `${fmtNum(row.Jc_A_per_cm2, 2)}/${fmtNum(row.Jlim_A_per_cm2, 2)}`;
                 const nvLabel = isBest ? `${row.Nv} *` : `${row.Nv}`;
-                const tv = Number.isFinite(Number(row.vane_tip_temp_C)) ? fmtNum(row.vane_tip_temp_C, 0) : "-";
+                const tv = (row.vane_tip_temp_C !== null && row.vane_tip_temp_C !== undefined && Number.isFinite(Number(row.vane_tip_temp_C)))
+                    ? fmtNum(row.vane_tip_temp_C, 0)
+                    : "-";
 
                 tr.innerHTML = `
                     <td>${nvLabel}</td>
