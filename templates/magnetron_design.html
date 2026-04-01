@@ -603,7 +603,7 @@
                             <div class="help-text">RF-to-DC efficiency. Auto-filled from type; lower values increase required anode voltage/current.</div>
                         </label>
                         <label>DC Impedance zdc (kOhm)
-                            <input name="zdc" type="number" step="0.1" placeholder="auto" />
+                            <input name="zdc" type="number" step="any" placeholder="auto" />
                             <div class="help-text">Characteristic DC impedance (Va/Ia ratio). Auto-filled from type; affects voltage-vs-power trade-off.</div>
                         </label>
                     </div>
@@ -1730,7 +1730,6 @@
         async function updateEtaZdc() {
             const typeId = form.type.value;
             const freq = parseFloat(form.freq.value);
-            const duty = parseFloat(form.duty.value);
 
             if (!typeId || !Number.isFinite(freq)) {
                 return;
@@ -1739,9 +1738,6 @@
             const myReq = ++etaZdcReqId;
             try {
                 let url = `/estimate?type=${encodeURIComponent(typeId)}&freq=${encodeURIComponent(freq)}`;
-                if (typeId === "s" && Number.isFinite(duty)) {
-                    url += `&duty=${encodeURIComponent(duty)}`;
-                }
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
@@ -1759,7 +1755,6 @@
             saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
             updateEtaZdc();
         });
-        form.duty.addEventListener("change", updateEtaZdc);
         form.freq.addEventListener("change", updateEtaZdc);
 
         // Only auto-estimate on load if the user didn't already have stored values.
