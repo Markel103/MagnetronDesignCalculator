@@ -683,6 +683,7 @@
                                         <th>Bz (mT)</th>
                                         <th>Pitch (mm)</th>
                                         <th>Jc/Jlim</th>
+                                        <th>Tv (°C)</th>
                                         <th>Sep (%)</th>
                                         <th>b</th>
                                         <th>Status</th>
@@ -973,6 +974,9 @@
             pushGeomRow("Anode length La", `${fmtNum(rec.La_mm, 3)} mm`);
             pushGeomRow("B̄ field", `${fmtNum(rec.B0_mT, 2)} mT`);
             pushGeomRow("Bz field", `${fmtNum(rec.Bz_mT, 2)} mT`);
+            if (Number.isFinite(Number(rec.vane_tip_temp_C))) {
+                pushGeomRow("Vane tip temperature Tv", `${fmtNum(rec.vane_tip_temp_C, 0)} °C`);
+            }
             pushGeomRow("Mode separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
             pushGeomRow("Cathode loading Jc/Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
             geomNoteEl.textContent = "Geometry corresponds to the recommended non-fatal candidate from the vane sweep.";
@@ -1526,6 +1530,7 @@
                         <td>-</td>
                         <td>-</td>
                         <td>-</td>
+                        <td>-</td>
                         <td><span class="chip fatal">INVALID</span> ${row.message || "Geometry infeasible"}</td>
                     `;
                     sweepBodyEl.appendChild(tr);
@@ -1536,6 +1541,7 @@
                 const statusText = issueText(row.issues);
                 const jc = `${fmtNum(row.Jc_A_per_cm2, 2)}/${fmtNum(row.Jlim_A_per_cm2, 2)}`;
                 const nvLabel = isBest ? `${row.Nv} *` : `${row.Nv}`;
+                const tv = Number.isFinite(Number(row.vane_tip_temp_C)) ? fmtNum(row.vane_tip_temp_C, 0) : "-";
 
                 tr.innerHTML = `
                     <td>${nvLabel}</td>
@@ -1545,6 +1551,7 @@
                     <td>${fmtNum(row.Bz_mT, 1)}</td>
                     <td>${fmtNum(row.pitch_mm, 2)}</td>
                     <td>${jc}</td>
+                    <td>${tv}</td>
                     <td>${fmtNum(row.mode_sep_pct, 1)}</td>
                     <td>${fmtNum(row.b, 2)}</td>
                     <td><span class="chip ${level}">${level.toUpperCase()}</span> ${statusText}</td>
@@ -1609,6 +1616,9 @@
             pushGeomRow("Anode length La", `${fmtNum(rec.La_mm, 3)} mm`);
             pushGeomRow("B̄ field", `${fmtNum(rec.B0_mT, 2)} mT`);
             pushGeomRow("Bz field", `${fmtNum(rec.Bz_mT, 2)} mT`);
+            if (Number.isFinite(Number(rec.vane_tip_temp_C))) {
+                pushGeomRow("Vane tip temperature Tv", `${fmtNum(rec.vane_tip_temp_C, 0)} °C`);
+            }
             pushGeomRow("Mode separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
             pushGeomRow("Cathode loading Jc/Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
             

@@ -50,6 +50,15 @@ MU0   = 4*math.pi*1e-7  # vacuum permeability (H/m)
 C     = 3e8          # speed of light (m/s)
 RCU   = 1.72e-8      # Cu resistivity at 20°C (Ω·m)
 
+# ─── Thermal / vane-tip temperature (Carter §15.7, Eq. 15.155–15.156) ───────
+COPPER_KAPPA = 401.0  # W/(m·K) thermal conductivity of OFHC copper
+T_COOL_K = 293.0      # K (≈20°C) cooling-channel reference temperature
+L_TH_M = 0.010        # m effective thermal path to cooling channel (Carter example)
+
+# Carter notes: avoid recrystallization above ~700°C; use 500°C for margin.
+T_VANE_WARN_K = 773.15   # 500°C
+T_VANE_FATAL_K = 973.15  # 700°C
+
 # ─── Collins Fig. 10-9: analytic fit for a1(r_a/r_c) ────────────────────────
 # Used in Collins Eq. (26c) for the characteristic current scale.
 #
@@ -99,6 +108,36 @@ def _a1_ra_over_rc(ra_over_rc: float) -> float:
         u = 2.0 * (ln_x - _A1_FIT_LN_MIN) / (_A1_FIT_LN_MAX - _A1_FIT_LN_MIN) - 1.0
 
     return _poly_eval(_A1_FIT_COEFFS_U, u)
+
+
+def _vane_tip_temperature_K(Pa_W: float, Nv: int, t_vane_m: float, La_m: float) -> float:
+    """Return vane-tip temperature estimate (K) using Carter Eq. 15.156.
+
+    Tv = Tr + (Pa * Lth) / (Av * kappa)
+
+    Where:
+      - Pa is anode dissipation power (W), approximated as Pdc - Prf (Eq. 15.155)
+      - Lth is effective thermal path length to cooling channel
+      - Av is total vane cross-sectional area normal to heat flow
+
+    This is intended for high-power CW designs where vane-tip heating limits.
+    """
+    if Pa_W is None or not math.isfinite(Pa_W) or Pa_W <= 0:
+        return float("nan")
+    if Nv is None or Nv <= 0:
+        return float("nan")
+    if t_vane_m is None or La_m is None:
+        return float("nan")
+    if not (math.isfinite(t_vane_m) and math.isfinite(La_m)):
+        return float("nan")
+    if t_vane_m <= 0 or La_m <= 0:
+        return float("nan")
+
+    Av_m2 = Nv * t_vane_m * La_m
+    if Av_m2 <= 0:
+        return float("nan")
+
+    return T_COOL_K + (Pa_W * L_TH_M) / (Av_m2 * COPPER_KAPPA)
 
 # ─── ANSI colour helpers ──────────────────────────────────────────────────────
 USE_COLOR = sys.stdout.isatty()
@@ -482,6 +521,16 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
         if type_id == "coa":
             QU *= 5.5   # external cavity energy storage multiplier
 
+        # Vane thickness (tangential) and vane-tip temperature (CW thermal limit)
+        pitch_m = 2 * math.pi * ra / Nv
+        t_vane_m = (1 - fill) * pitch_m
+
+        Tv_tip_K = float("nan")
+        if is_cw:
+            # Carter Eq. 15.155: Pa = Pdc - Prf (neglect cathode dissipation)
+            Pa_W = dc["Pdc"] - dc["P_kw"] * 1e3
+            Tv_tip_K = _vane_tip_temperature_K(Pa_W, Nv, t_vane_m, La)
+
         # Anode power density (CW only) — Collins Ch. 8 limit ≤ 25 W/cm²
         Pd_cw = 0.0
         if is_cw:
@@ -570,17 +619,27 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
             issues.append(("fatal", f"Pd {Pd_cw:.1f} W/cm² > 50"))
         elif is_cw and Pd_cw > 25:
             issues.append(("warn",  f"Pd {Pd_cw:.1f} W/cm² > 25"))
+
+        if is_cw and math.isfinite(Tv_tip_K):
+            if Tv_tip_K > T_VANE_FATAL_K:
+                issues.append(("fatal", f"Vane tip T {Tv_tip_K - 273.15:.0f}°C > 700°C"))
+            elif Tv_tip_K > T_VANE_WARN_K:
+                issues.append(("warn",  f"Vane tip T {Tv_tip_K - 273.15:.0f}°C > 500°C"))
         if type_id == "rs" and Nv % 4 == 0:
             issues.append(("warn",  "Nv divisible by 4 — avoid"))
         if type_id == "rs" and abs(wc_over_ws - 1) < 0.28:
             issues.append(("fatal", "ωc/ω ≈ 1 — cyclotron resonance!"))
 
         fatal = any(s == "fatal" for s, _ in issues)
+        temp_penalty = 0.0
+        if is_cw and math.isfinite(Tv_tip_K) and Tv_tip_K > T_VANE_WARN_K:
+            temp_penalty = (Tv_tip_K - T_VANE_WARN_K) * 0.35
         score = (
             (min(msep, 40) if msep > 0 else -200)
             - max(0, (Jc / Jlim - 0.5)) * 25
             - abs(wc_over_ws - 4.5) * 2.5
             - abs(dc["VaVH"] - 0.72) * 55
+            - temp_penalty
             - (180 if fatal else 0)
         )
 
@@ -592,9 +651,10 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
             "La_mm": La * 1e3,
             "w_gap_mm": w_gap * 1e3,
             "d_cav_mm": d_cav * 1e3,
-            "t_vane_mm": (1 - fill) * 2 * math.pi * ra / Nv * 1e3,
+            "t_vane_mm": t_vane_m * 1e3,
             "Jc": Jc, "Jlim": Jlim,
             "Pd_cw": Pd_cw,
+            "Tv_tip_C": (Tv_tip_K - 273.15) if (is_cw and math.isfinite(Tv_tip_K)) else float("nan"),
             "VTn1_kV": VTn1 / 1e3,
             "msep": msep,
             "QU": QU,
@@ -1085,6 +1145,7 @@ def compute_design_payload(inputs):
             "Jc_A_per_cm2": rr["Jc"],
             "Jlim_A_per_cm2": rr["Jlim"],
             "Pd_cw_W_per_cm2": rr["Pd_cw"],
+            "vane_tip_temp_C": rr.get("Tv_tip_C"),
             "VTn1_kV": rr["VTn1_kV"],
             "mode_sep_pct": rr["msep"],
             "QU": rr["QU"],
@@ -1165,6 +1226,7 @@ def compute_design_payload(inputs):
             "Jc_A_per_cm2": rec["Jc"],
             "Jlim_A_per_cm2": rec["Jlim"],
             "Pd_cw_W_per_cm2": rec["Pd_cw"],
+            "vane_tip_temp_C": rec.get("Tv_tip_C"),
             "mode_sep_pct": rec["msep"],
             "VTn1_kV": rec["VTn1_kV"],
             "QU": rec["QU"],
