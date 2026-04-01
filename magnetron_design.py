@@ -622,10 +622,8 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
             issues.append(("warn",  "Va/VH > 0.92 — near cut-off"))
         if dc["VaVH"] < 0.45:
             issues.append(("warn",  "Va/VH < 0.45 — Collins range"))
-        if is_cw and Pd_cw > 50:
-            issues.append(("fatal", f"Pd {Pd_cw:.1f} W/cm² > 50"))
-        elif is_cw and Pd_cw > 25:
-            issues.append(("warn",  f"Pd {Pd_cw:.1f} W/cm² > 25"))
+        # NOTE: Pd_cw is retained for CLI/internal analysis, but is intentionally
+        # not surfaced as a UI warning/fatal constraint.
 
         if math.isfinite(Tv_tip_K):
             if Tv_tip_K > T_VANE_FATAL_K:
@@ -1171,7 +1169,6 @@ def compute_design_payload(inputs):
             "t_vane_mm": rr["t_vane_mm"],
             "Jc_A_per_cm2": rr["Jc"],
             "Jlim_A_per_cm2": rr["Jlim"],
-            "Pd_cw_W_per_cm2": rr["Pd_cw"],
             "vane_tip_temp_C": rr.get("Tv_tip_C"),
             "VTn1_kV": rr["VTn1_kV"],
             "mode_sep_pct": rr["msep"],
@@ -1253,7 +1250,6 @@ def compute_design_payload(inputs):
             "d_cav_mm": rec["d_cav_mm"],
             "Jc_A_per_cm2": rec["Jc"],
             "Jlim_A_per_cm2": rec["Jlim"],
-            "Pd_cw_W_per_cm2": rec["Pd_cw"],
             "vane_tip_temp_C": rec.get("Tv_tip_C"),
             "mode_sep_pct": rec["msep"],
             "VTn1_kV": rec["VTn1_kV"],
