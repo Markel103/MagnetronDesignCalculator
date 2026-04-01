@@ -32,7 +32,6 @@ import json
 import math
 import sys
 import os
-import bisect
 from functools import lru_cache
 from datetime import datetime, timezone
 
@@ -51,52 +50,55 @@ MU0   = 4*math.pi*1e-7  # vacuum permeability (H/m)
 C     = 3e8          # speed of light (m/s)
 RCU   = 1.72e-8      # Cu resistivity at 20°C (Ω·m)
 
-# ─── Collins Fig. 10-9: a1(r_a/r_c) digitized knots ─────────────────────────
+# ─── Collins Fig. 10-9: analytic fit for a1(r_a/r_c) ────────────────────────
 # Used in Collins Eq. (26c) for the characteristic current scale.
-_A1_RA_RC_XS = [
-    1.052941, 1.111765, 1.170588, 1.229412, 1.270588, 1.329412, 1.388235,
-    1.511765, 1.570588, 1.629412, 1.688235, 1.729412, 1.788235, 1.852941,
-    1.911765, 1.964706, 2.068966, 2.132184, 2.189655, 2.229885, 2.293103,
-    2.350575, 2.408046, 2.471264, 2.528736, 2.591954, 2.626437, 2.689655,
-    2.752874, 2.810345, 2.867816, 2.931034, 3.137931, 3.166667, 3.229885,
-    3.293103, 3.350575, 3.408046, 3.471264, 3.528736, 3.568966, 3.626437,
-    3.689655, 3.752874, 3.810345, 3.867816, 3.931034, 4.034884, 4.069767,
-    4.133721, 4.191860, 4.250000, 4.308140, 4.366279, 4.430233, 4.470930,
-    4.529070, 4.587209, 4.651163, 4.709302, 4.773256, 4.831395, 4.866279,
-    4.930233, 5.034091, 5.090909, 5.153409, 5.210227, 5.267045, 5.329545,
-    5.369318, 5.426136, 5.488636, 5.551136, 5.607955, 5.670455, 5.732955,
-    5.767045, 5.829545, 5.892045, 5.948864,
+#
+# The original Fig. 10-9 curve was digitized and then least-squares fit with a
+# degree-8 polynomial in a normalized log-domain variable:
+#
+#   u = 2 * (ln(x) - ln_min) / (ln_max - ln_min) - 1,  where x = r_a/r_c.
+#   a1(x) ≈ sum_{k=0..8} c[k] * u^k
+#
+# This avoids per-call table lookups/interpolation while preserving the curve.
+_A1_FIT_LN_MIN = 0.05158720119271373   # ln(1.052941)
+_A1_FIT_LN_MAX = 1.7832002769594129    # ln(5.948864)
+_A1_FIT_COEFFS_U = [
+    0.9480964736150357,
+    0.1343167961175846,
+    0.3385982556573334,
+    -0.02378311006723695,
+    -0.06720129636763175,
+    -0.09976163133958345,
+    0.20298030313882626,
+    0.09464202504274469,
+    -0.11217668407614961,
 ]
-_A1_RA_RC_YS = [
-    1.206845, 1.166667, 1.133929, 1.101190, 1.077381, 1.059524, 1.035714,
-    0.981928, 0.981928, 0.969880, 0.957831, 0.951807, 0.945783, 0.939759,
-    0.939759, 0.939759, 0.939759, 0.939759, 0.939759, 0.939759, 0.939759,
-    0.939759, 0.939759, 0.945783, 0.945783, 0.951807, 0.951807, 0.957831,
-    0.963855, 0.969880, 0.975904, 0.981928, 1.017857, 1.017857, 1.017857,
-    1.023810, 1.029762, 1.035714, 1.041667, 1.053571, 1.053571, 1.059524,
-    1.071429, 1.077381, 1.086310, 1.095238, 1.101190, 1.119048, 1.119048,
-    1.130952, 1.136905, 1.142857, 1.154762, 1.160714, 1.166667, 1.175595,
-    1.184524, 1.193452, 1.202381, 1.208333, 1.220238, 1.226190, 1.235119,
-    1.244048, 1.255952, 1.267857, 1.279762, 1.288690, 1.297619, 1.303571,
-    1.312500, 1.321429, 1.333333, 1.345238, 1.354167, 1.369048, 1.375000,
-    1.380952, 1.392857, 1.404762, 1.416667,
-]
+
+
+def _poly_eval(coeffs, x):
+    """Evaluate polynomial with coeffs in increasing order via Horner's rule."""
+    acc = 0.0
+    for c in reversed(coeffs):
+        acc = acc * x + c
+    return acc
 
 
 def _a1_ra_over_rc(ra_over_rc: float) -> float:
-    """Return a1(r_a/r_c) via piecewise-linear interpolation of Fig. 10-9."""
-    if ra_over_rc is None or not math.isfinite(ra_over_rc):
+    """Return a1(r_a/r_c) from an analytic fit to Collins Fig. 10-9."""
+    if ra_over_rc is None or not math.isfinite(ra_over_rc) or ra_over_rc <= 0:
         return float("nan")
-    if ra_over_rc <= _A1_RA_RC_XS[0]:
-        return _A1_RA_RC_YS[0]
-    if ra_over_rc >= _A1_RA_RC_XS[-1]:
-        return _A1_RA_RC_YS[-1]
-    j = bisect.bisect_left(_A1_RA_RC_XS, ra_over_rc)
-    x0, x1 = _A1_RA_RC_XS[j - 1], _A1_RA_RC_XS[j]
-    y0, y1 = _A1_RA_RC_YS[j - 1], _A1_RA_RC_YS[j]
-    if x1 == x0:
-        return y0
-    return y0 + (y1 - y0) * (ra_over_rc - x0) / (x1 - x0)
+
+    # Match the old interpolation behavior outside the digitized domain by
+    # clamping to the fit range.
+    ln_x = math.log(ra_over_rc)
+    if ln_x <= _A1_FIT_LN_MIN:
+        u = -1.0
+    elif ln_x >= _A1_FIT_LN_MAX:
+        u = 1.0
+    else:
+        u = 2.0 * (ln_x - _A1_FIT_LN_MIN) / (_A1_FIT_LN_MAX - _A1_FIT_LN_MIN) - 1.0
+
+    return _poly_eval(_A1_FIT_COEFFS_U, u)
 
 # ─── ANSI colour helpers ──────────────────────────────────────────────────────
 USE_COLOR = sys.stdout.isatty()
