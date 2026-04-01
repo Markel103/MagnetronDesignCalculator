@@ -636,7 +636,10 @@
                         <label>Reference DB ID (load_db)
                             <input name="load_db" type="text" placeholder="mg5193" />
                         </label>
-                        <div></div>
+                        <label>Duty cycle (0–1)
+                            <input name="duty" type="number" step="0.001" min="0" max="1" value="1" placeholder="1.0" />
+                            <div class="help-text">Used for the combined Strapped type. Duty=1 is treated as CW; duty&lt;1 uses pulsed limits (Tv is CW-only).</div>
+                        </label>
                     </div>
 
                     <div class="btns">
@@ -1698,7 +1701,16 @@
             form.preset.value = presetKey;
             form.freq.value = p.f ?? "";
             form.power.value = p.P ?? "";
-            form.type.value = p.type ?? "";
+            if (p.type === "s_cw") {
+                form.type.value = "s";
+                form.duty.value = 1.0;
+            } else if (p.type === "s_pls") {
+                form.type.value = "s";
+                form.duty.value = 0.001;
+            } else {
+                form.type.value = p.type ?? "";
+                form.duty.value = 1.0;
+            }
             form.cath.value = p.cath ?? "";
             form.eta.value = p.eta ?? "";
             form.zdc.value = p.Zdc ?? "";
@@ -1718,6 +1730,7 @@
         async function updateEtaZdc() {
             const typeId = form.type.value;
             const freq = parseFloat(form.freq.value);
+            const duty = parseFloat(form.duty.value);
 
             if (!typeId || !Number.isFinite(freq)) {
                 return;
@@ -1725,7 +1738,10 @@
 
             const myReq = ++etaZdcReqId;
             try {
-                const url = `/estimate?type=${encodeURIComponent(typeId)}&freq=${encodeURIComponent(freq)}`;
+                let url = `/estimate?type=${encodeURIComponent(typeId)}&freq=${encodeURIComponent(freq)}`;
+                if (typeId === "s" && Number.isFinite(duty)) {
+                    url += `&duty=${encodeURIComponent(duty)}`;
+                }
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
@@ -1743,6 +1759,7 @@
             saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
             updateEtaZdc();
         });
+        form.duty.addEventListener("change", updateEtaZdc);
         form.freq.addEventListener("change", updateEtaZdc);
 
         // Only auto-estimate on load if the user didn't already have stored values.

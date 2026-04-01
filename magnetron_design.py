@@ -1012,6 +1012,7 @@ def _resolve_design_inputs(raw_params):
     P_kw = None
     t_id = None
     cath = "disp"
+    duty_cycle = None
     eta = None
     Zdc = None
     etaC = 90.0
@@ -1047,6 +1048,7 @@ def _resolve_design_inputs(raw_params):
     # Explicit params override preset/db values.
     f_exp = _to_float("freq")
     p_exp = _to_float("power")
+    duty_exp = _to_float("duty")
     eta_exp = _to_float("eta")
     zdc_exp = _to_float("zdc")
     etac_exp = _to_float("etac")
@@ -1055,6 +1057,7 @@ def _resolve_design_inputs(raw_params):
 
     f_ghz = f_exp if f_exp is not None else f_ghz
     P_kw = p_exp if p_exp is not None else P_kw
+    duty_cycle = duty_exp if duty_exp is not None else duty_cycle
     eta = eta_exp if eta_exp is not None else eta
     Zdc = zdc_exp if zdc_exp is not None else Zdc
     etaC = etac_exp if etac_exp is not None else etaC
@@ -1071,8 +1074,20 @@ def _resolve_design_inputs(raw_params):
     if f_ghz is None or P_kw is None or t_id is None:
         raise ValueError("Missing required inputs: freq, power, and type (or provide preset/load_db).")
 
+    # Duty-cycle handling (UI can use a combined strapped type selector).
+    if duty_cycle is None:
+        duty_cycle = 1.0
+    if not (0 < duty_cycle <= 1.0):
+        raise ValueError("duty must be in (0, 1]")
+
+    # Map combined strapped type to the existing CW/pulsed internal keys.
+    # Requirement: duty==1 is considered CW.
+    if str(t_id).strip().lower() in {"s", "strapped"}:
+        t_id = "s_cw" if duty_cycle >= 1.0 else "s_pls"
+
     if t_id not in TYPES:
-        raise ValueError(f"Invalid type '{t_id}'. Valid: {', '.join(TYPES.keys())}")
+        valid = ", ".join(sorted(set(TYPES.keys()) | {"s"}))
+        raise ValueError(f"Invalid type '{t_id}'. Valid: {valid}")
     if cath not in CATHODES:
         raise ValueError(f"Invalid cath '{cath}'. Valid: {', '.join(CATHODES.keys())}")
     if not (0.1 <= fill <= 0.9):
@@ -1085,6 +1100,7 @@ def _resolve_design_inputs(raw_params):
         "P_kw": P_kw,
         "type_id": t_id,
         "cath_id": cath,
+        "duty_cycle": duty_cycle,
         "eta_override": eta,
         "zdc_override": Zdc,
         "etac_pct": etaC,
@@ -1166,6 +1182,7 @@ def compute_design_payload(inputs):
             "type": t_id,
             "type_label": t["label"],
             "duty": t["duty"],
+            "duty_cycle": inputs.get("duty_cycle", 1.0),
             "cathode": cath_id,
             "cathode_label": CATHODES[cath_id]["label"],
             "eta_pct": eta_pct,
@@ -1387,15 +1404,26 @@ def create_app():
     @app.get("/ui")
     def ui_page():
         # TYPES contains callables (eta_fn, zdc_fn); keep only UI-safe fields.
-        ui_types = {
-            k: {
+        # UI combines strapped CW/pulsed into a single selector entry (id: "s").
+        ui_types = {}
+        for k, v in TYPES.items():
+            if k in {"s_cw", "s_pls"}:
+                continue
+            ui_types[k] = {
                 "label": v["label"],
                 "duty": v["duty"],
                 "QL": v["QL"],
                 "apps": v["apps"],
                 "desc": v["desc"],
             }
-            for k, v in TYPES.items()
+        # Use CW strapped metadata as the base UI description.
+        base = TYPES["s_cw"]
+        ui_types["s"] = {
+            "label": "Strapped (duty cycle)",
+            "duty": "duty",
+            "QL": base["QL"],
+            "apps": base["apps"],
+            "desc": "Strapped magnetron; CW vs pulsed behavior controlled by duty cycle.",
         }
         return render_template(
             "magnetron_design.html",
@@ -1417,10 +1445,24 @@ def create_app():
         """
         type_id = request.args.get("type", "").strip()
         freq_s = request.args.get("freq", "").strip()
+        duty_s = request.args.get("duty", "").strip()
         try:
             freq = float(freq_s)
         except Exception:
             return jsonify({"error": "Invalid freq"}), 400
+
+        duty_cycle = 1.0
+        if duty_s:
+            try:
+                duty_cycle = float(duty_s)
+            except Exception:
+                return jsonify({"error": "Invalid duty"}), 400
+        if not (0 < duty_cycle <= 1.0):
+            return jsonify({"error": "duty must be in (0, 1]"}), 400
+
+        # Combined strapped type for UI
+        if type_id.lower() in {"s", "strapped"}:
+            type_id = "s_cw" if duty_cycle >= 1.0 else "s_pls"
 
         if type_id not in TYPES:
             return jsonify({"error": "Invalid type"}), 400
