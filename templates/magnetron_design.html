@@ -1,0 +1,1865 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Magnetron Design UI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --bg-1: #f7f3eb;
+            --bg-2: #e7edf2;
+            --card: rgba(255, 255, 255, 0.86);
+            --line: #c8d2db;
+            --ink: #1f2a33;
+            --muted: #546472;
+            --accent: #15616d;
+            --accent-2: #ff7d00;
+            --ok: #116a39;
+            --err: #b42318;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(1200px 700px at 10% -10%, #fff7dc 0%, transparent 60%),
+                radial-gradient(900px 600px at 100% 0%, #dff1f5 0%, transparent 65%),
+                linear-gradient(160deg, var(--bg-1), var(--bg-2));
+            display: grid;
+            place-items: start stretch;
+            padding: 10px 2px 20px;
+        }
+
+        .shell {
+            width: min(1800px, calc(100vw - 4px));
+            margin: 0 auto;
+            display: grid;
+            gap: 12px;
+            animation: rise 420ms ease-out;
+        }
+
+        .hero {
+            padding: 18px 20px;
+            border: 1px solid #d9e2ea;
+            border-radius: 18px;
+            background: var(--card);
+            backdrop-filter: blur(4px);
+        }
+
+        h1 {
+            margin: 0 0 6px;
+            font-size: clamp(1.35rem, 2vw, 1.95rem);
+            letter-spacing: 0.2px;
+        }
+
+        .sub {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.96rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 0.52fr 1.48fr;
+            gap: 2px;
+            align-items: start;
+        }
+
+        .panel {
+            border: 1px solid #d9e2ea;
+            border-radius: 18px;
+            background: var(--card);
+            backdrop-filter: blur(4px);
+            padding: 13px;
+        }
+
+        .output-stack {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: 0.95fr 1.05fr;
+            align-items: start;
+            min-width: 0;
+        }
+
+        .input-panel {
+            max-width: 430px;
+            width: 100%;
+        }
+
+        #summary { grid-column: 1; min-width: 0; }
+        #dcGraph { grid-column: 2; min-width: 0; width: 100%; max-width: 100%; }
+        #geometry { grid-column: 1; min-width: 0; }
+        #sweep { grid-column: 2; min-width: 0; width: 100%; max-width: 100%; }
+
+        .section-title {
+            margin: 2px 0 12px;
+            font-size: 1rem;
+            color: #193040;
+        }
+
+        form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .row {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        label {
+            display: grid;
+            gap: 6px;
+            font-size: 0.87rem;
+            color: var(--muted);
+        }
+
+        .help-text {
+            font-size: 0.77rem;
+            color: #7a8a96;
+            margin-top: -4px;
+            font-style: italic;
+            line-height: 1.35;
+        }
+
+        input, select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            color: var(--ink);
+            padding: 10px 11px;
+            font-size: 0.95rem;
+        }
+
+        input:focus, select:focus {
+            outline: 2px solid #7cc0ca;
+            outline-offset: 1px;
+            border-color: #7cc0ca;
+        }
+
+        .btns {
+            display: flex;
+            gap: 10px;
+            margin-top: 2px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            border: 0;
+            border-radius: 11px;
+            padding: 10px 14px;
+            font-size: 0.94rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 120ms ease, opacity 120ms ease;
+        }
+
+        button:hover { transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+
+        .primary { background: var(--accent); color: #fff; }
+        .ghost { background: #eef3f7; color: #233746; }
+        .warm { background: var(--accent-2); color: #23180b; }
+
+        .status {
+            min-height: 22px;
+            margin: 0;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        .status.ok { color: var(--ok); }
+        .status.err { color: var(--err); }
+
+        .summary {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fbfdff;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .summary h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 10px;
+        }
+
+        .summary-item {
+            border: 1px solid #e3e9ef;
+            border-radius: 8px;
+            background: #fff;
+            padding: 7px 8px;
+        }
+
+        .summary-item .k {
+            display: block;
+            color: var(--muted);
+            font-size: 0.74rem;
+            margin-bottom: 2px;
+        }
+
+        .summary-item .v {
+            display: block;
+            color: #1c2f3c;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+
+        .summary-foot {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .clogston {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fff;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+
+        .clogston h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .clogston table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+
+        .clogston th,
+        .clogston td {
+            border-bottom: 1px solid #edf1f5;
+            padding: 6px 5px;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        .clogston th {
+            color: var(--muted);
+            font-weight: 600;
+            background: #f8fbfd;
+        }
+
+        .clogston-note {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .geom {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fff;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+
+        .geom h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .geom table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.84rem;
+        }
+
+        .geom th,
+        .geom td {
+            border-bottom: 1px solid #edf1f5;
+            padding: 6px 5px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .geom th {
+            color: var(--muted);
+            font-weight: 600;
+            width: 44%;
+        }
+
+        .geom-note {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .sweep {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fff;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+
+        .sweep h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .sweep-wrap {
+            overflow: auto;
+            border: 1px solid #edf1f5;
+            border-radius: 8px;
+            max-width: 100%;
+        }
+
+        .sweep table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.79rem;
+            min-width: 760px;
+        }
+
+        .sweep th,
+        .sweep td {
+            border-bottom: 1px solid #edf1f5;
+            padding: 6px 6px;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        .sweep th {
+            color: var(--muted);
+            font-weight: 600;
+            background: #f8fbfd;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .sweep tr.best td {
+            background: #ecfbf1;
+            font-weight: 600;
+        }
+
+        .sweep tr:hover {
+            background: #f0f5f9;
+        }
+
+        .sweep tr.selected td {
+            background: #cce5f0;
+            font-weight: 600;
+            border-bottom: 2px solid #15616d;
+        }
+
+        .sweep tr.selected:hover td {
+            background: #b8d9e8;
+        }
+
+        .sweep-note {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .chip {
+            display: inline-block;
+            border-radius: 999px;
+            padding: 2px 7px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .chip.ok { background: #e8f7ef; color: #0f6a3e; }
+        .chip.warn { background: #fff4df; color: #8b5200; }
+        .chip.fatal { background: #fdecec; color: #b42318; }
+
+        .dc-graph {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fff;
+            padding: 10px;
+            min-width: 0;
+        }
+
+        .dc-graph h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .chart-wrap {
+            border: 1px solid #edf1f5;
+            border-radius: 8px;
+            padding: 6px;
+            background: #fbfdff;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        #dcChart {
+            width: 100%;
+            height: 320px;
+            display: block;
+        }
+
+        .dc-note {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .geom-sketch {
+            border: 1px solid #d4dde5;
+            border-radius: 12px;
+            background: #fff;
+            padding: 10px;
+            min-width: 0;
+            margin-top: 10px;
+        }
+
+        .geom-sketch h3 {
+            margin: 0 0 8px;
+            font-size: 0.94rem;
+            color: #1c3442;
+        }
+
+        .geom-canvas-wrap {
+            border: 1px solid #edf1f5;
+            border-radius: 8px;
+            padding: 6px;
+            background: #fbfdff;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        #geomSketchCanvas {
+            width: 100%;
+            height: 360px;
+            display: block;
+        }
+
+        .geom-sketch-note {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        @media (max-width: 980px) {
+            .grid { grid-template-columns: 1fr; }
+            .output-stack { grid-template-columns: 1fr; }
+            #summary, #clogston, #dcGraph, #geometry, #sweep { grid-column: auto; }
+            #dcChart { height: 230px; }
+            #geomSketchCanvas { height: 260px; }
+            body { padding: 8px 2px 14px; }
+            .shell { width: calc(100vw - 4px); }
+            .input-panel { max-width: none; }
+        }
+
+        @keyframes rise {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .sources-footer {
+            margin-top: 28px;
+            padding: 16px 20px;
+            border-top: 1px solid var(--line);
+            font-size: 0.92rem;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 0 0 8px 8px;
+        }
+
+        .sources-footer h4 {
+            margin: 0 0 12px 0;
+            font-size: 1.05rem;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .sources-footer hr {
+            border: none;
+            height: 0;
+            margin: 0 0 10px 0;
+            opacity: 0;
+        }
+
+        .sources-list {
+            margin: 0 0 12px 0;
+            padding-left: 20px;
+            list-style-position: outside;
+        }
+
+        .sources-list li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+            color: var(--muted);
+        }
+
+        .sources-list strong {
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        .sources-list em {
+            font-style: italic;
+        }
+
+        details {
+            cursor: pointer;
+        }
+
+        summary {
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0;
+            margin: 0 0 12px 0;
+            font-size: 1.05rem;
+            color: var(--ink);
+            font-weight: 600;
+        }
+
+        summary::-webkit-details-marker {
+            color: var(--accent);
+        }
+
+        summary::marker {
+            color: var(--accent);
+        }
+
+        details[open] > summary {
+            margin-bottom: 12px;
+        }
+
+        .sources-note {
+            margin: 0;
+            font-size: 0.88rem;
+            color: var(--muted);
+            font-style: italic;
+            padding-top: 8px;
+            border-top: 1px solid rgba(200, 210, 219, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <h1>Magnetron Design Calculator</h1>
+        </section>
+
+        <section class="grid">
+            <article class="panel input-panel">
+                <h2 class="section-title">Input Parameters</h2>
+                <form id="designForm">
+                    <div class="row">
+                        <label>Frequency (GHz)
+                            <input name="freq" type="number" step="0.1" placeholder="9.375" />
+                            <div class="help-text">Operating RF frequency. Affects tube size, efficiency estimate, and mode characteristics.</div>
+                        </label>
+                        <label>Power (kW)
+                            <input name="power" type="number" step="any" placeholder="250" />
+                            <div class="help-text">RF output power (peak for pulsed, CW for continuous). Sets DC voltage/current requirements.</div>
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Type
+                            <select name="type" id="typeSelect">
+                                <option value="">(optional)</option>
+                            </select>
+                            <div class="help-text">Tube architecture (strapped, coaxial, rising-sun, long-anode). Determines frequency stability, efficiency model, and impedance.</div>
+                        </label>
+                        <label>Cathode
+                            <select name="cath" id="cathSelect">
+                                <option value="">(optional)</option>
+                            </select>
+                            <div class="help-text">Cathode material (oxide, dispenser, thoriated-W). Affects emission density limits and back-bombardment tolerance.</div>
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Overall Efficiency eta (%)
+                            <input name="eta" type="number" step="any" placeholder="auto" />
+                            <div class="help-text">RF-to-DC efficiency. Auto-filled from type; lower values increase required anode voltage/current.</div>
+                        </label>
+                        <label>DC Impedance zdc (kOhm)
+                            <input name="zdc" type="number" step="0.1" placeholder="auto" />
+                            <div class="help-text">Characteristic DC impedance (Va/Ia ratio). Auto-filled from type; affects voltage-vs-power trade-off.</div>
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Circuit Efficiency etac (%)
+                            <input name="etac" type="number" step="any" placeholder="90" />
+                            <div class="help-text">Efficiency of external circuit (load coupling). Higher values reduce DC power requirement.</div>
+                        </label>
+                        <label>Modified Slater Factor rp
+                            <input name="rp" type="number" step="0.1" placeholder="2.0" />
+                            <div class="help-text">Correction factor for cavity resonance frequency. Small ~2.0; increase if frequency drifts up.</div>
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Fill Factor (w/p)
+                            <input name="fill" type="number" step="0.01" placeholder="0.45" />
+                            <div class="help-text">Gap-to-pitch ratio (w/p). Controls interaction strength and mode selectivity; optimal ~0.40–0.50.</div>
+                        </label>
+                        <label>Preset
+                            <select name="preset" id="presetSelect">
+                                <option value="">(none)</option>
+                            </select>
+                            <div class="help-text">Load a quick-start design (radar, linac, oven, etc.). Overrides manual fields.</div>
+                        </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Reference DB ID (load_db)
+                            <input name="load_db" type="text" placeholder="mg5193" />
+                        </label>
+                        <div></div>
+                    </div>
+
+                    <div class="btns">
+                        <button type="submit" class="primary">Calculate</button>
+                        <button type="button" id="clearBtn" class="ghost">Clear</button>
+                        <button type="button" id="sampleBtn" class="warm">Load Preset</button>
+                    </div>
+                </form>
+                <p id="status" class="status">Ready.</p>
+            </article>
+
+            <article class="panel">
+                <h2 class="section-title">Output</h2>
+                <div class="output-stack">
+                    <section id="summary" class="summary">
+                        <h3>Engineering Summary</h3>
+                        <div id="summaryGrid" class="summary-grid"></div>
+                        <div id="summaryFoot" class="summary-foot">No calculation yet.</div>
+                    </section>
+                    <section id="dcGraph" class="dc-graph">
+                        <h3>Voltage vs Magnetic Field</h3>
+                        <div class="chart-wrap">
+                            <canvas id="dcChart"></canvas>
+                        </div>
+                        <div id="dcGraphNote" class="dc-note">No V-B operating point available yet.</div>
+                    </section>
+                    <section id="geometry" class="geom">
+                        <h3>Magnetron Geometry Output</h3>
+                        <table>
+                            <tbody id="geomBody"></tbody>
+                        </table>
+                        <div id="geomNote" class="geom-note">No geometry available yet.</div>
+                    </section>
+                    <section id="sweep" class="sweep">
+                        <h3>Vane-count Sweep</h3>
+                        <div class="sweep-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nv</th>
+                                        <th>ra (mm)</th>
+                                        <th>rc (mm)</th>
+                                        <th>rc/ra</th>
+                                        <th>Bz (mT)</th>
+                                        <th>Pitch (mm)</th>
+                                        <th>Jc/Jlim</th>
+                                        <th>Sep (%)</th>
+                                        <th>b</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sweepBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="sweepNote" class="sweep-note">No sweep data available yet.</div>
+                    </section>
+
+                    <section id="geomSketch" class="geom-sketch">
+                        <h3>Magnetron Geometry Sketch (Carter/Collins Definitions)</h3>
+                        <div class="geom-canvas-wrap">
+                            <canvas id="geomSketchCanvas"></canvas>
+                        </div>
+                        <div id="geomSketchNote" class="geom-sketch-note">No geometry sketch available yet.</div>
+                    </section>
+
+                    <section id="collinsParams" class="clogston">
+                        <h3>Collins / Clogston Dimensionless Parameters</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Value</th>
+                                    <th>Typical (p10–p90)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="collinsBody"></tbody>
+                        </table>
+                        <div id="collinsNote" class="clogston-note">No parameter assessment yet.</div>
+                    </section>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <script>
+        const types = {{ types_data|safe }};
+        const cathodes = {{ cathodes_data|safe }};
+        const presets = {{ presets_data|safe }};
+
+        const form = document.getElementById("designForm");
+        const statusEl = document.getElementById("status");
+        const summaryGridEl = document.getElementById("summaryGrid");
+        const summaryFootEl = document.getElementById("summaryFoot");
+        const dcChartEl = document.getElementById("dcChart");
+        const dcGraphNoteEl = document.getElementById("dcGraphNote");
+        const collinsBodyEl = document.getElementById("collinsBody");
+        const collinsNoteEl = document.getElementById("collinsNote");
+        const geomBodyEl = document.getElementById("geomBody");
+        const geomNoteEl = document.getElementById("geomNote");
+        const geomSketchCanvasEl = document.getElementById("geomSketchCanvas");
+        const geomSketchNoteEl = document.getElementById("geomSketchNote");
+        const sweepBodyEl = document.getElementById("sweepBody");
+        const sweepNoteEl = document.getElementById("sweepNote");
+        const typeSelect = document.getElementById("typeSelect");
+        const cathSelect = document.getElementById("cathSelect");
+        const presetSelect = document.getElementById("presetSelect");
+        const clearBtn = document.getElementById("clearBtn");
+        const sampleBtn = document.getElementById("sampleBtn");
+
+        let lastResponseData = null;
+        let selectedSweepRow = null;
+
+        function addOptions(select, map, formatter, descField = null) {
+            Object.entries(map).forEach(([key, value]) => {
+                const opt = document.createElement("option");
+                opt.value = key;
+                opt.textContent = formatter(key, value);
+                if (descField && value[descField]) {
+                    opt.title = value[descField];
+                }
+                select.appendChild(opt);
+            });
+        }
+
+        addOptions(typeSelect, types, (k, v) => v.label, 'desc');
+        addOptions(cathSelect, cathodes, (k, v) => `${k} - ${v.label}`, 'note');
+        addOptions(presetSelect, presets, (k, v) => `${k} - ${v.desc}`);
+
+        const STORAGE_KEYS = {
+            type: "magnetron_design:type",
+            cath: "magnetron_design:cath",
+            eta: "magnetron_design:eta",
+            zdc: "magnetron_design:zdc",
+        };
+
+        function saveSelectToStorage(key, selectEl) {
+            try {
+                const v = selectEl.value || "";
+                localStorage.setItem(key, v);
+            } catch {
+                // ignore (storage blocked/disabled)
+            }
+        }
+
+        function clearStoredSelect(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch {
+                // ignore
+            }
+        }
+
+        function saveInputToStorage(key, inputEl) {
+            try {
+                const v = (inputEl && inputEl.value !== undefined) ? String(inputEl.value) : "";
+                localStorage.setItem(key, v);
+            } catch {
+                // ignore
+            }
+        }
+
+        function restoreInputFromStorage(key, inputEl) {
+            try {
+                const v = localStorage.getItem(key);
+                if (v === null || v === undefined || v === "") return false;
+                if (!inputEl) return false;
+                inputEl.value = v;
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        function restoreSelectFromStorage(key, selectEl) {
+            try {
+                const v = localStorage.getItem(key);
+                if (!v) return false;
+                const hasOption = Array.from(selectEl.options).some(o => o.value === v);
+                if (!hasOption) return false;
+                selectEl.value = v;
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        // Restore persisted selections after options are populated.
+        restoreSelectFromStorage(STORAGE_KEYS.type, typeSelect);
+        restoreSelectFromStorage(STORAGE_KEYS.cath, cathSelect);
+
+        const etaRestored = restoreInputFromStorage(STORAGE_KEYS.eta, form.eta);
+        const zdcRestored = restoreInputFromStorage(STORAGE_KEYS.zdc, form.zdc);
+
+        cathSelect.addEventListener("change", () => saveSelectToStorage(STORAGE_KEYS.cath, cathSelect));
+
+        form.eta.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.eta, form.eta));
+        form.zdc.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.zdc, form.zdc));
+
+        function setStatus(text, mode) {
+            statusEl.textContent = text;
+            statusEl.className = `status ${mode || ""}`.trim();
+        }
+
+        function collectPayload() {
+            const fd = new FormData(form);
+            const payload = {};
+            for (const [k, v] of fd.entries()) {
+                if (v !== "") payload[k] = v;
+            }
+            return payload;
+        }
+
+        function fmtNum(v, digits = 3) {
+            if (v === null || v === undefined || Number.isNaN(Number(v))) return "-";
+            return Number(v).toFixed(digits);
+        }
+
+        function clearSummary(message) {
+            summaryGridEl.innerHTML = "";
+            summaryFootEl.textContent = message || "No calculation yet.";
+        }
+
+        function pushSummaryItem(label, value) {
+            const box = document.createElement("div");
+            box.className = "summary-item";
+            box.innerHTML = `<span class="k">${label}</span><span class="v">${value}</span>`;
+            summaryGridEl.appendChild(box);
+        }
+
+        function clearParams(message) {
+            collinsBodyEl.innerHTML = "";
+            collinsNoteEl.textContent = message || "No Collins/Clogston parameters yet.";
+        }
+
+        function fmtRange(r, digits = 3) {
+            if (!r) return "-";
+            const p10 = Number(r.p10);
+            const p90 = Number(r.p90);
+            if (!Number.isFinite(p10) || !Number.isFinite(p90)) return "-";
+            return `${fmtNum(p10, digits)}–${fmtNum(p90, digits)}`;
+        }
+
+        function renderDimensionlessPanels(data, rec, modeLabel) {
+            const dc = data.dc_operating_point || {};
+            const ranges = data.typical_parameter_ranges || {};
+            const collinsRanges = (ranges && ranges.collins) ? ranges.collins : {};
+            const source = ranges && ranges.source ? ranges.source : null;
+
+            if (!rec) {
+                clearParams("No valid geometry candidate available for parameter assessment.");
+                return;
+            }
+
+            const collinsParams = [
+                { key: "b", name: "b = B/B̄", value: Number(rec.b), digits: 3, rangeDigits: 3 },
+                { key: "v", name: "v = V/V̄", value: Number(rec.v), digits: 4, rangeDigits: 4 },
+                { key: "i", name: "i = I/Ī", value: Number(rec.ii), digits: 4, rangeDigits: 4 },
+                { key: "g", name: "g = G_L/Ḡ", value: Number(rec.g), digits: 4, rangeDigits: 4 },
+                { key: "p", name: "p = P/P̄", value: Number(rec.p), digits: 4, rangeDigits: 4 },
+            ];
+
+            collinsBodyEl.innerHTML = "";
+            collinsParams.forEach((item) => {
+                const tr = document.createElement("tr");
+                const finite = Number.isFinite(item.value);
+                const val = finite ? fmtNum(item.value, item.digits || 3) : "-";
+                const rng = fmtRange(collinsRanges[item.key], item.rangeDigits || item.digits || 3);
+                tr.innerHTML = `
+                    <td>${item.name}</td>
+                    <td>${val}</td>
+                    <td>${rng}</td>
+                `;
+                collinsBodyEl.appendChild(tr);
+            });
+
+            const suffix = source ? ` Typical ranges from ${source}.` : "";
+            collinsNoteEl.textContent = `${modeLabel}.${suffix}`;
+        }
+
+        function renderSummaryCards(data, rec, footText) {
+            clearSummary("");
+            const inp = data.inputs || {};
+            const dc = data.dc_operating_point || {};
+
+            pushSummaryItem("Type", `${inp.type_label || inp.type || "-"}`);
+            pushSummaryItem("Cathode", `${inp.cathode_label || inp.cathode || "-"}`);
+            pushSummaryItem("Frequency", `${fmtNum(inp.freq_GHz, 4)} GHz`);
+            pushSummaryItem("Power", `${fmtNum(inp.power_kW, 2)} kW`);
+            pushSummaryItem("Va", `${fmtNum(dc.Va_kV, 3)} kV`);
+            pushSummaryItem("Ia", `${fmtNum(dc.Ia_A, 3)} A`);
+            pushSummaryItem("Va/VH", fmtNum(dc.Va_over_VH, 3));
+
+            if (rec) {
+                pushSummaryItem("Selected Nv", `${rec.Nv ?? "-"}`);
+                pushSummaryItem("ra", `${fmtNum(rec.ra_mm, 3)} mm`);
+                pushSummaryItem("rc", `${fmtNum(rec.rc_mm, 3)} mm`);
+                pushSummaryItem("Bz", `${fmtNum(rec.Bz_mT, 2)} mT`);
+                pushSummaryItem("Mode Separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
+                pushSummaryItem("Jc / Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
+                summaryFootEl.textContent = footText;
+            } else {
+                summaryFootEl.textContent = "No valid recommended candidate for the provided operating point.";
+            }
+        }
+
+        function clearGeometry(message) {
+            geomBodyEl.innerHTML = "";
+            geomNoteEl.textContent = message || "No geometry available yet.";
+        }
+
+        function pushGeomRow(label, value) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<th>${label}</th><td>${value}</td>`;
+            geomBodyEl.appendChild(tr);
+        }
+
+        function renderGeometry(data) {
+            const rec = data.recommended;
+            if (!rec) {
+                clearGeometry("No valid recommended geometry for the current operating point.");
+                return;
+            }
+
+            clearGeometry("");
+            pushGeomRow("Recommended vane count (Nv)", `${rec.Nv ?? "-"}`);
+            pushGeomRow("Anode radius ra", `${fmtNum(rec.ra_mm, 3)} mm`);
+            pushGeomRow("Cathode radius rc", `${fmtNum(rec.rc_mm, 3)} mm`);
+            pushGeomRow("Radius ratio rc/ra", fmtNum(rec.xi, 4));
+            pushGeomRow("Interaction gap ra-rc", `${fmtNum(rec.gap_mm, 3)} mm`);
+            pushGeomRow("Vane pitch", `${fmtNum(rec.pitch_mm, 3)} mm`);
+            pushGeomRow("Gap width w", `${fmtNum(rec.w_gap_mm, 3)} mm`);
+            pushGeomRow("Vane thickness t", `${fmtNum(rec.t_vane_mm, 3)} mm`);
+            pushGeomRow("Cavity depth", `${fmtNum(rec.d_cav_mm, 3)} mm`);
+            pushGeomRow("Anode length La", `${fmtNum(rec.La_mm, 3)} mm`);
+            pushGeomRow("B̄ field", `${fmtNum(rec.B0_mT, 2)} mT`);
+            pushGeomRow("Bz field", `${fmtNum(rec.Bz_mT, 2)} mT`);
+            pushGeomRow("Mode separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
+            pushGeomRow("Cathode loading Jc/Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
+            geomNoteEl.textContent = "Geometry corresponds to the recommended non-fatal candidate from the vane sweep.";
+        }
+
+        function clearDcGraph(message) {
+            const ctx = dcChartEl.getContext("2d");
+            const w = dcChartEl.clientWidth || 600;
+            const h = dcChartEl.clientHeight || 240;
+            const dpr = window.devicePixelRatio || 1;
+            dcChartEl.width = Math.floor(w * dpr);
+            dcChartEl.height = Math.floor(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#6b7a86";
+            ctx.font = "13px Segoe UI";
+            ctx.fillText("No Voltage vs Magnetic Field graph.", 14, 22);
+            dcGraphNoteEl.textContent = message || "No V-B operating point available yet.";
+        }
+
+        function drawDcGraph(data) {
+            const dc = data.dc_operating_point;
+            if (!dc) {
+                clearDcGraph("No DC operating point returned.");
+                return;
+            }
+
+            const EOM_JS = 1.75882e11;
+
+            const Va = Number(dc.Va_kV);
+            const V0 = Number(dc.V0_kV);
+            if (!Number.isFinite(Va) || !Number.isFinite(V0)) {
+                clearDcGraph("DC operating point values are invalid.");
+                return;
+            }
+
+            let rec = data.recommended || null;
+            if (!rec && Array.isArray(data.vane_sweep)) {
+                rec = data.vane_sweep.find((r) => r.ok && !r.fatal) || null;
+            }
+            if (!rec) {
+                clearDcGraph("No valid vane solution available for V-B plot.");
+                return;
+            }
+
+            const Bz = Number(rec.Bz_mT);
+            const B0 = Number(rec.B0_mT);
+            if (!Number.isFinite(Bz) || !Number.isFinite(B0) || B0 <= 0) {
+                clearDcGraph("Magnetic field values are invalid for V-B plot.");
+                return;
+            }
+
+            const fGHz = Number(data.inputs ? data.inputs.freq_GHz : NaN);
+            const Nv = Number(rec.Nv);
+            const raM = Number(rec.ra_mm) / 1000.0;
+            const xi = Number(rec.xi);
+            const n = Math.floor(Nv / 2);
+            if (!Number.isFinite(fGHz) || !Number.isFinite(raM) || !Number.isFinite(xi) || n < 1) {
+                clearDcGraph("Insufficient data to compute mode threshold lines.");
+                return;
+            }
+
+            const ctx = dcChartEl.getContext("2d");
+            const w = dcChartEl.clientWidth || 600;
+            const h = dcChartEl.clientHeight || 240;
+            const dpr = window.devicePixelRatio || 1;
+            dcChartEl.width = Math.floor(w * dpr);
+            dcChartEl.height = Math.floor(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            const pad = { l: 52, r: 14, t: 12, b: 34 };
+            const cw = w - pad.l - pad.r;
+            const ch = h - pad.t - pad.b;
+            const xMax = Math.max(80, Bz * 1.10);
+            let yMax = Math.max(2, Va * 1.10);
+            const hullA = V0 / (B0 * B0);
+
+            // Build threshold model per oscillation mode m = 1..n and add m=n+1.
+            const modeModels = [];
+            const mMax = n + 1;
+            for (let m = 1; m <= mMax; m++) {
+                const wsM = 2 * Math.PI * fGHz * 1e9 / m;
+                const B0mT = (2 * wsM / (EOM_JS * (1 - xi * xi))) * 1e3;
+                const V0mKV = (raM * raM * wsM * wsM / (2 * EOM_JS)) / 1e3;
+                if (!Number.isFinite(B0mT) || !Number.isFinite(V0mKV) || B0mT <= 0) {
+                    continue;
+                }
+
+                // Cut-off point where Hull and threshold coincide:
+                // hullA*B^2 = V0m*(2*B/B0m - 1)
+                const qa = hullA;
+                const qb = -(2 * V0mKV / B0mT);
+                const qc = V0mKV;
+                let disc = qb * qb - 4 * qa * qc;
+                let cutoffBmT = null;
+                let cutoffVkV = null;
+                if (Number.isFinite(disc)) {
+                    // Guard near-tangent numeric noise around disc ~= 0.
+                    if (disc < 0 && disc > -1e-10) {
+                        disc = 0;
+                    }
+                    if (disc >= 0) {
+                        const sqrtDisc = Math.sqrt(disc);
+                        const r1 = (-qb - sqrtDisc) / (2 * qa);
+                        const r2 = (-qb + sqrtDisc) / (2 * qa);
+                        const roots = [r1, r2]
+                            .filter((x) => Number.isFinite(x) && x >= 0)
+                            .sort((a, b) => a - b);
+                        if (roots.length > 0) {
+                            // Prefer the physically relevant branch where threshold is non-negative.
+                            cutoffBmT = roots.find((x) => x >= (0.5 * B0mT)) ?? roots[0];
+                            cutoffVkV = hullA * cutoffBmT * cutoffBmT;
+                        }
+                    }
+                }
+
+                // Fallback for pi-mode if quadratic root is numerically unstable.
+                if ((cutoffBmT === null || !Number.isFinite(cutoffBmT)) && m === n) {
+                    cutoffBmT = B0mT;
+                    cutoffVkV = V0mKV;
+                }
+                if (cutoffBmT === null || !Number.isFinite(cutoffBmT)) {
+                    continue;
+                }
+
+                const vAtXmax = V0mKV * (2 * (xMax / B0mT) - 1);
+                if (Number.isFinite(vAtXmax) && vAtXmax <= Va * 1.35) {
+                    yMax = Math.max(yMax, vAtXmax * 1.03);
+                }
+                if (Number.isFinite(cutoffVkV) && cutoffVkV <= Va * 1.35) {
+                    yMax = Math.max(yMax, cutoffVkV * 1.03);
+                }
+                modeModels.push({ m, B0mT, V0mKV, cutoffBmT, cutoffVkV });
+            }
+            yMax = Math.max(2, yMax);
+
+            const xToPx = (x) => pad.l + (x / xMax) * cw;
+            const yToPx = (y) => pad.t + ch - (y / yMax) * ch;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.strokeStyle = "#e2e8ef";
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const x = xToPx((xMax / 5) * i);
+                const y = yToPx((yMax / 5) * i);
+                ctx.beginPath();
+                ctx.moveTo(x, pad.t);
+                ctx.lineTo(x, pad.t + ch);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(pad.l, y);
+                ctx.lineTo(pad.l + cw, y);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = "#1e3543";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(pad.l, pad.t);
+            ctx.lineTo(pad.l, pad.t + ch);
+            ctx.lineTo(pad.l + cw, pad.t + ch);
+            ctx.stroke();
+
+            ctx.fillStyle = "#4b5b67";
+            ctx.font = "12px Segoe UI";
+            ctx.fillText("Bz (mT)", pad.l + cw - 44, h - 10);
+            ctx.save();
+            ctx.translate(14, pad.t + ch / 2 + 24);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText("Voltage (kV)", 0, 0);
+            ctx.restore();
+
+            ctx.fillStyle = "#5d6c78";
+            for (let i = 0; i <= 5; i++) {
+                const xv = (xMax / 5) * i;
+                const yv = (yMax / 5) * i;
+                ctx.fillText(xv.toFixed(1), xToPx(xv) - 10, pad.t + ch + 16);
+                ctx.fillText(yv.toFixed(1), pad.l - 38, yToPx(yv) + 4);
+            }
+
+            // Hull cut-off curve in cylindrical form: Vh(B) = V0 * (B/B0)^2.
+            ctx.strokeStyle = "#ff8a3d";
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            let started = false;
+            for (let b = 0; b <= xMax; b += xMax / 120) {
+                const vHull = V0 * (b / B0) * (b / B0);
+                if (vHull > yMax) continue;
+                const px = xToPx(b);
+                const py = yToPx(vHull);
+                if (!started) {
+                    ctx.moveTo(px, py);
+                    started = true;
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            ctx.stroke();
+
+            // Threshold lines for oscillating modes m=1..n using generalized form:
+            // V_T,m(B) = V0,m * (2*(B/B0,m) - 1)
+            const palette = ["#8c1d40", "#2b59c3", "#2f8f6b", "#944bbb", "#b85e00", "#006d77", "#c9184a", "#4f772d"];
+            modeModels.forEach((model) => {
+                const color = model.m === (n + 1) ? "#0f766e" : palette[(model.m - 1) % palette.length];
+                ctx.strokeStyle = color;
+                ctx.lineWidth = model.m === n ? 2.0 : (model.m === (n + 1) ? 1.8 : 1.0);
+                if (model.m === n) {
+                    ctx.setLineDash([]);
+                } else if (model.m === (n + 1)) {
+                    ctx.setLineDash([8, 3]);
+                } else {
+                    ctx.setLineDash([3, 3]);
+                }
+                ctx.beginPath();
+                let s = false;
+                for (let b = model.cutoffBmT; b <= xMax; b += xMax / 120) {
+                    const vt = model.V0mKV * (2 * (b / model.B0mT) - 1);
+                    if (!Number.isFinite(vt) || vt < 0 || vt > yMax) {
+                        continue;
+                    }
+                    const px = xToPx(b);
+                    const py = yToPx(vt);
+                    if (!s) {
+                        ctx.moveTo(px, py);
+                        s = true;
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                }
+                ctx.stroke();
+            });
+            ctx.setLineDash([]);
+
+            // Mark pi-mode cut-off point (m=n), where Hull and pi threshold coincide.
+            const piModel = modeModels.find((mm) => mm.m === n);
+            const piCutoffB = piModel ? piModel.cutoffBmT : B0;
+            const piCutoffV = piModel ? piModel.cutoffVkV : V0;
+            if (Number.isFinite(piCutoffB) && Number.isFinite(piCutoffV)) {
+                const px = xToPx(piCutoffB);
+                const py = yToPx(piCutoffV);
+                ctx.fillStyle = "#111827";
+                ctx.beginPath();
+                ctx.arc(px, py, 4.6, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(px - 4, py);
+                ctx.lineTo(px + 4, py);
+                ctx.moveTo(px, py - 4);
+                ctx.lineTo(px, py + 4);
+                ctx.stroke();
+            }
+
+            // Guide lines through operating point.
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = "#6b7a86";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(xToPx(Bz), yToPx(0));
+            ctx.lineTo(xToPx(Bz), yToPx(Va));
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(xToPx(0), yToPx(Va));
+            ctx.lineTo(xToPx(Bz), yToPx(Va));
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Operating point marker.
+            ctx.fillStyle = "#15616d";
+            ctx.beginPath();
+            ctx.arc(xToPx(Bz), yToPx(Va), 5, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.fillStyle = "#1f2a33";
+            ctx.font = "12px Segoe UI";
+            ctx.fillText(`Operating point (${Bz.toFixed(1)} mT, ${Va.toFixed(2)} kV)`, 62, 18);
+            ctx.fillStyle = "#9a5a1b";
+            ctx.fillText(`Hull cut-off curve  Vh(B)=V̄*(B/B̄)^2`, 62, 34);
+            ctx.fillStyle = "#3f4f5a";
+            ctx.fillText(`Mode thresholds m=1..${n + 1} from cut-off onward (m=${n} pi, m=${n + 1} above-pi)`, 62, 50);
+            if (Number.isFinite(piCutoffB) && Number.isFinite(piCutoffV)) {
+                ctx.fillText(`Pi-mode cut-off: (${piCutoffB.toFixed(1)} mT, ${piCutoffV.toFixed(2)} kV)`, 62, 66);
+            }
+
+            dcGraphNoteEl.textContent = "Each threshold line starts at its cut-off intersection with Hull; pi-mode cut-off is marked, and the above-pi mode uses a long-dash teal line.";
+        }
+
+        function clearGeometrySketch(message) {
+            const ctx = geomSketchCanvasEl.getContext("2d");
+            const w = geomSketchCanvasEl.clientWidth || 600;
+            const h = geomSketchCanvasEl.clientHeight || 240;
+            const dpr = window.devicePixelRatio || 1;
+            geomSketchCanvasEl.width = Math.floor(w * dpr);
+            geomSketchCanvasEl.height = Math.floor(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = "#6b7a86";
+            ctx.font = "13px Segoe UI";
+            ctx.fillText("No magnetron geometry sketch available.", 14, 22);
+            geomSketchNoteEl.textContent = message || "No geometry sketch available yet.";
+        }
+
+        function drawGeometrySketch(data) {
+            let rec = data.recommended || null;
+            if (!rec && Array.isArray(data.vane_sweep)) {
+                rec = data.vane_sweep.find((r) => r.ok && !r.fatal) || null;
+            }
+            if (!rec) {
+                clearGeometrySketch("No valid geometry available for sketch.");
+                return;
+            }
+
+            const ra = Number(rec.ra_mm);
+            const rc = Number(rec.rc_mm);
+            const Nv = Math.max(0, Math.floor(Number(rec.Nv)));
+            const dCav = Number.isFinite(Number(rec.d_cav_mm)) && Number(rec.d_cav_mm) > 0
+                ? Number(rec.d_cav_mm)
+                : Math.max(0.5, 0.8 * Math.max(0.1, ra - rc));
+            const tVane = Number.isFinite(Number(rec.t_vane_mm)) && Number(rec.t_vane_mm) > 0
+                ? Number(rec.t_vane_mm)
+                : 0.25 * Math.max(0.1, ra);
+            const wGap = Number.isFinite(Number(rec.w_gap_mm)) && Number(rec.w_gap_mm) > 0
+                ? Number(rec.w_gap_mm)
+                : 0.35 * (2 * Math.PI * ra / Math.max(1, Nv));
+
+            if (!Number.isFinite(ra) || !Number.isFinite(rc) || !Number.isFinite(dCav) || ra <= rc || rc <= 0 || Nv < 2) {
+                clearGeometrySketch("Invalid geometry values for sketch rendering.");
+                return;
+            }
+
+            const ctx = geomSketchCanvasEl.getContext("2d");
+            const w = geomSketchCanvasEl.clientWidth || 600;
+            const h = geomSketchCanvasEl.clientHeight || 240;
+            const dpr = Math.min(3, (window.devicePixelRatio || 1) * 1.4);
+            geomSketchCanvasEl.width = Math.floor(w * dpr);
+            geomSketchCanvasEl.height = Math.floor(h * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            const cx = Math.floor(w * 0.50);
+            const cy = Math.floor(h * 0.52);
+            const rOuterMm = ra + dCav;
+            const drawable = Math.min(w * 0.86, h * 0.84);
+            const scale = Math.max(1e-6, (0.5 * drawable) / rOuterMm);
+            const rCath = rc * scale;
+            const rAnode = ra * scale;
+            const rOuter = rOuterMm * scale;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+
+            // Cavity ring (from anode bore radius ra to cavity back-wall radius ra+d_cav).
+            ctx.fillStyle = "#e8f1f7";
+            ctx.beginPath();
+            ctx.arc(cx, cy, rOuter, 0, 2 * Math.PI);
+            ctx.arc(cx, cy, rAnode, 0, 2 * Math.PI, true);
+            ctx.closePath();
+            ctx.fill();
+
+            // Vanes around the anode block, using Carter/Collins Nv periodic geometry.
+            const step = (2 * Math.PI) / Nv;
+            const pitch = (2 * Math.PI * ra) / Nv;
+            const wEff = Math.max(0.1, Math.min(pitch * 0.95, wGap));
+            const tEff = Math.max(0.1, Math.min(pitch * 0.95, tVane));
+            const rMid = (ra + 0.5 * dCav) * scale;
+            const dTheta = Math.max(0.01, Math.min((tEff * scale) / Math.max(1, rMid), 0.72 * step));
+            const halfTPix = 0.5 * tEff * scale;
+
+            // Draw rectangular vane bars (constant tangential width, radial depth d_cav).
+            ctx.fillStyle = "#4f7b95";
+            for (let i = 0; i < Nv; i++) {
+                const theta = -Math.PI / 2 + i * step;
+                const ux = Math.cos(theta);
+                const uy = Math.sin(theta);
+                const vx = -uy;
+                const vy = ux;
+
+                const x0 = cx + rAnode * ux - halfTPix * vx;
+                const y0 = cy + rAnode * uy - halfTPix * vy;
+                const x1 = cx + rAnode * ux + halfTPix * vx;
+                const y1 = cy + rAnode * uy + halfTPix * vy;
+                const x2 = cx + rOuter * ux + halfTPix * vx;
+                const y2 = cy + rOuter * uy + halfTPix * vy;
+                const x3 = cx + rOuter * ux - halfTPix * vx;
+                const y3 = cy + rOuter * uy - halfTPix * vy;
+
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.lineTo(x3, y3);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Cathode and interaction space.
+            ctx.fillStyle = "#ffe3c5";
+            ctx.beginPath();
+            ctx.arc(cx, cy, rCath, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.strokeStyle = "#d97706";
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rCath, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.strokeStyle = "#17384d";
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rAnode, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, rOuter, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.fillStyle = "#1f2a33";
+            ctx.font = "12px Segoe UI";
+            ctx.fillText(`Nv=${Nv}`, cx - 18, cy + 4);
+
+            function dimRadial(angle, r0, r1, label, color) {
+                const x0 = cx + r0 * Math.cos(angle);
+                const y0 = cy + r0 * Math.sin(angle);
+                const x1 = cx + r1 * Math.cos(angle);
+                const y1 = cy + r1 * Math.sin(angle);
+                const tx = cx + (r1 + 18) * Math.cos(angle);
+                const ty = cy + (r1 + 18) * Math.sin(angle);
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(x0, y0, 2, 0, 2 * Math.PI);
+                ctx.arc(x1, y1, 2, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.fillText(label, tx, ty);
+            }
+
+            dimRadial(-0.33 * Math.PI, 0, rCath, `rc=${rc.toFixed(2)} mm`, "#b45309");
+            dimRadial(0.18 * Math.PI, 0, rAnode, `ra=${ra.toFixed(2)} mm`, "#0f4c75");
+            dimRadial(0.82 * Math.PI, rAnode, rOuter, `d_cav=${dCav.toFixed(2)} mm`, "#334155");
+
+            // Gap width w measured between two adjacent vane faces at the cavity mouth.
+            const gapStart = (-Math.PI / 2) + dTheta / 2;
+            const gapEnd = (-Math.PI / 2) + step - dTheta / 2;
+            const rW = rAnode + 0.06 * (rOuter - rAnode);
+            ctx.strokeStyle = "#0b7285";
+            ctx.fillStyle = "#0b7285";
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rW, gapStart, gapEnd);
+            ctx.stroke();
+
+            const gx0 = cx + rW * Math.cos(gapStart);
+            const gy0 = cy + rW * Math.sin(gapStart);
+            const gx1 = cx + rW * Math.cos(gapEnd);
+            const gy1 = cy + rW * Math.sin(gapEnd);
+            ctx.beginPath();
+            ctx.arc(gx0, gy0, 2, 0, 2 * Math.PI);
+            ctx.arc(gx1, gy1, 2, 0, 2 * Math.PI);
+            ctx.fill();
+
+            const gapMid = 0.5 * (gapStart + gapEnd);
+            const gwx = cx + (rW + 16) * Math.cos(gapMid);
+            const gwy = cy + (rW + 16) * Math.sin(gapMid);
+            ctx.fillText(`w=${wEff.toFixed(2)} mm`, gwx, gwy);
+
+            // Vane thickness measured on a real vane at fixed radius (tangential direction).
+            const vaneTheta = -Math.PI / 2;
+            const rT = (ra + 0.55 * dCav) * scale;
+            const halfT = Math.min(dTheta / 2, 0.49 * step);
+            const t0 = vaneTheta - halfT;
+            const t1 = vaneTheta + halfT;
+            const tx0 = cx + rT * Math.cos(t0);
+            const ty0 = cy + rT * Math.sin(t0);
+            const tx1 = cx + rT * Math.cos(t1);
+            const ty1 = cy + rT * Math.sin(t1);
+            ctx.strokeStyle = "#7c3aed";
+            ctx.fillStyle = "#7c3aed";
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rT, t0, t1);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(tx0, ty0, 2, 0, 2 * Math.PI);
+            ctx.arc(tx1, ty1, 2, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.fillText(`t=${tEff.toFixed(2)} mm`, tx1 + 8, ty1 - 2);
+
+            geomSketchNoteEl.textContent = "Sketch follows Carter/Collins cylindrical definitions and updates with selected vane-count candidate.";
+        }
+
+        function clearSweep(message) {
+            sweepBodyEl.innerHTML = "";
+            sweepNoteEl.textContent = message || "No sweep data available yet.";
+        }
+
+        function issueText(issues) {
+            if (!issues || !Array.isArray(issues) || issues.length === 0) {
+                return "OK";
+            }
+            return issues.map((x) => x.message).join("; ");
+        }
+
+        function issueLevel(row) {
+            if (!row.ok || row.fatal) return "fatal";
+            const issues = row.issues || [];
+            if (issues.some((x) => x.level === "fatal")) return "fatal";
+            if (issues.some((x) => x.level === "warn")) return "warn";
+            return "ok";
+        }
+
+        function renderSweep(data) {
+            const rows = data.vane_sweep;
+            if (!rows || !Array.isArray(rows) || rows.length === 0) {
+                clearSweep("No sweep data returned.");
+                return;
+            }
+
+            const bestNv = data.recommended ? data.recommended.Nv : null;
+            clearSweep("");
+
+            rows.forEach((row) => {
+                const tr = document.createElement("tr");
+                const isBest = row.ok && bestNv !== null && Number(row.Nv) === Number(bestNv);
+                if (isBest) {
+                    tr.classList.add("best");
+                }
+
+                if (!row.ok) {
+                    tr.innerHTML = `
+                        <td>${row.Nv ?? "-"}</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td><span class="chip fatal">INVALID</span> ${row.message || "Geometry infeasible"}</td>
+                    `;
+                    sweepBodyEl.appendChild(tr);
+                    return;
+                }
+
+                const level = issueLevel(row);
+                const statusText = issueText(row.issues);
+                const jc = `${fmtNum(row.Jc_A_per_cm2, 2)}/${fmtNum(row.Jlim_A_per_cm2, 2)}`;
+                const nvLabel = isBest ? `${row.Nv} *` : `${row.Nv}`;
+
+                tr.innerHTML = `
+                    <td>${nvLabel}</td>
+                    <td>${fmtNum(row.ra_mm, 2)}</td>
+                    <td>${fmtNum(row.rc_mm, 2)}</td>
+                    <td>${fmtNum(row.xi, 3)}</td>
+                    <td>${fmtNum(row.Bz_mT, 1)}</td>
+                    <td>${fmtNum(row.pitch_mm, 2)}</td>
+                    <td>${jc}</td>
+                    <td>${fmtNum(row.mode_sep_pct, 1)}</td>
+                    <td>${fmtNum(row.b, 2)}</td>
+                    <td><span class="chip ${level}">${level.toUpperCase()}</span> ${statusText}</td>
+                `;
+                
+                tr.style.cursor = "pointer";
+                tr.dataset.nv = row.Nv;
+                tr.addEventListener("click", () => {
+                    selectSweepRow(tr, row, data);
+                });
+                
+                sweepBodyEl.appendChild(tr);
+            });
+
+            sweepNoteEl.textContent = bestNv === null
+                ? "Sweep completed; no recommended non-fatal candidate found. Click a row to inspect."
+                : `Sweep completed. Recommended candidate is marked with * (Nv=${bestNv}). Click any row to inspect.`;
+        }
+
+        function selectSweepRow(trElement, rowData, fullData) {
+            // Remove previous selection
+            if (selectedSweepRow) {
+                selectedSweepRow.classList.remove("selected");
+            }
+            
+            // Highlight new selection
+            selectedSweepRow = trElement;
+            selectedSweepRow.classList.add("selected");
+            
+            // Update outputs with this row's data
+            updateOutputsForRow(rowData, fullData);
+        }
+
+        function updateOutputsForRow(rowData, fullData) {
+            // Create a synthetic data object with this row as the geometry
+            const modifiedData = {
+                inputs: fullData.inputs,
+                dc_operating_point: fullData.dc_operating_point,
+                typical_parameter_ranges: fullData.typical_parameter_ranges,
+                recommended: rowData,
+                vane_sweep: fullData.vane_sweep
+            };
+
+            renderSummaryCards(modifiedData, rowData, "Summary from selected vane-count candidate.");
+            renderDimensionlessPanels(modifiedData, rowData, "Assessment based on selected sweep row");
+            drawDcGraph(modifiedData);
+            renderGeometryForRow(rowData);
+            drawGeometrySketch(modifiedData);
+        }
+
+        function renderGeometryForRow(rec) {
+            clearGeometry("");
+            pushGeomRow("Selected vane count (Nv)", `${rec.Nv ?? "-"}`);
+            pushGeomRow("Anode radius ra", `${fmtNum(rec.ra_mm, 3)} mm`);
+            pushGeomRow("Cathode radius rc", `${fmtNum(rec.rc_mm, 3)} mm`);
+            pushGeomRow("Radius ratio rc/ra", fmtNum(rec.xi, 4));
+            pushGeomRow("Interaction gap ra-rc", `${fmtNum(rec.gap_mm, 3)} mm`);
+            pushGeomRow("Vane pitch", `${fmtNum(rec.pitch_mm, 3)} mm`);
+            pushGeomRow("Gap width w", `${fmtNum(rec.w_gap_mm, 3)} mm`);
+            pushGeomRow("Vane thickness t", `${fmtNum(rec.t_vane_mm, 3)} mm`);
+            pushGeomRow("Cavity depth", `${fmtNum(rec.d_cav_mm, 3)} mm`);
+            pushGeomRow("Anode length La", `${fmtNum(rec.La_mm, 3)} mm`);
+            pushGeomRow("B̄ field", `${fmtNum(rec.B0_mT, 2)} mT`);
+            pushGeomRow("Bz field", `${fmtNum(rec.Bz_mT, 2)} mT`);
+            pushGeomRow("Mode separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
+            pushGeomRow("Cathode loading Jc/Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
+            
+            const statusLevel = issueLevel(rec);
+            const statusMsg = issueText(rec.issues);
+            geomNoteEl.innerHTML = `<strong style="color: var(--ink);">Status:</strong> ${statusLevel.toUpperCase()} — ${statusMsg}`;
+        }
+
+        function renderSummary(data) {
+            lastResponseData = data;
+            const rec = data.recommended || null;
+            renderSummaryCards(data, rec, "Summary from recommended non-fatal design candidate.");
+            renderDimensionlessPanels(data, rec, "Assessment based on recommended candidate");
+            drawDcGraph(data);
+            renderGeometry(data);
+            drawGeometrySketch(data);
+            renderSweep(data);
+        }
+
+        form.addEventListener("submit", async (ev) => {
+            ev.preventDefault();
+            const payload = collectPayload();
+            setStatus("Calculating...", "");
+
+            try {
+                const res = await fetch("/calculate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    renderSummary(data);
+                    setStatus("Calculation completed.", "ok");
+                } else {
+                    clearSummary("Summary unavailable due to request error.");
+                    clearParams("Parameter assessment unavailable due to request error.");
+                    clearDcGraph("DC graph unavailable due to request error.");
+                    clearGeometry("Geometry unavailable due to request error.");
+                    clearGeometrySketch("Geometry sketch unavailable due to request error.");
+                    clearSweep("Sweep unavailable due to request error.");
+                    setStatus(`Request failed (${res.status}).`, "err");
+                }
+            } catch (err) {
+                setStatus("Request error. Check server console.", "err");
+                clearSummary("Summary unavailable due to network error.");
+                clearParams("Parameter assessment unavailable due to network error.");
+                clearDcGraph("DC graph unavailable due to network error.");
+                clearGeometry("Geometry unavailable due to network error.");
+                clearGeometrySketch("Geometry sketch unavailable due to network error.");
+                clearSweep("Sweep unavailable due to network error.");
+            }
+        });
+
+        clearBtn.addEventListener("click", () => {
+            form.reset();
+            clearStoredSelect(STORAGE_KEYS.type);
+            clearStoredSelect(STORAGE_KEYS.cath);
+            clearStoredSelect(STORAGE_KEYS.eta);
+            clearStoredSelect(STORAGE_KEYS.zdc);
+            if (selectedSweepRow) {
+                selectedSweepRow.classList.remove("selected");
+                selectedSweepRow = null;
+            }
+            clearSummary("Form cleared.");
+            clearParams("Form cleared.");
+            clearDcGraph("Form cleared.");
+            clearGeometry("Form cleared.");
+            clearGeometrySketch("Form cleared.");
+            clearSweep("Form cleared.");
+            setStatus("Form cleared.", "");
+        });
+
+        function applyPresetToForm(presetKey) {
+            const p = presets[presetKey];
+            if (!p) {
+                return false;
+            }
+
+            form.reset();
+            form.preset.value = presetKey;
+            form.freq.value = p.f ?? "";
+            form.power.value = p.P ?? "";
+            form.type.value = p.type ?? "";
+            form.cath.value = p.cath ?? "";
+            form.eta.value = p.eta ?? "";
+            form.zdc.value = p.Zdc ?? "";
+            form.etac.value = p.etaC ?? "";
+            form.rp.value = p.Rp ?? "";
+            form.fill.value = p.fill ?? "";
+            form.load_db.value = "";
+
+            saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
+            saveSelectToStorage(STORAGE_KEYS.cath, cathSelect);
+            saveInputToStorage(STORAGE_KEYS.eta, form.eta);
+            saveInputToStorage(STORAGE_KEYS.zdc, form.zdc);
+            return true;
+        }
+
+        let etaZdcReqId = 0;
+        async function updateEtaZdc() {
+            const typeId = form.type.value;
+            const freq = parseFloat(form.freq.value);
+
+            if (!typeId || !Number.isFinite(freq)) {
+                return;
+            }
+
+            const myReq = ++etaZdcReqId;
+            try {
+                const url = `/estimate?type=${encodeURIComponent(typeId)}&freq=${encodeURIComponent(freq)}`;
+                const res = await fetch(url);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (myReq !== etaZdcReqId) return;
+                if (data && data.eta !== undefined) form.eta.value = data.eta;
+                if (data && data.zdc !== undefined) form.zdc.value = data.zdc;
+                saveInputToStorage(STORAGE_KEYS.eta, form.eta);
+                saveInputToStorage(STORAGE_KEYS.zdc, form.zdc);
+            } catch {
+                // ignore network errors
+            }
+        }
+
+        typeSelect.addEventListener("change", () => {
+            saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
+            updateEtaZdc();
+        });
+        form.freq.addEventListener("change", updateEtaZdc);
+
+        // Only auto-estimate on load if the user didn't already have stored values.
+        if (!(etaRestored || zdcRestored)) {
+            updateEtaZdc();
+        }
+
+        sampleBtn.addEventListener("click", () => {
+            const selectedPreset = form.preset.value;
+            const presetKey = selectedPreset || "radar_x";
+            if (applyPresetToForm(presetKey)) {
+                const suffix = selectedPreset ? "" : " (default radar_x)";
+                setStatus(`Preset '${presetKey}' loaded${suffix}.`, "ok");
+            } else {
+                setStatus("Selected preset could not be loaded.", "err");
+            }
+        });
+
+        clearParams("No parameter assessment available yet.");
+        clearDcGraph("No DC operating point available yet.");
+        clearGeometrySketch("No geometry sketch available yet.");
+
+        // Render LaTeX-style formulas (KaTeX auto-render).
+        document.addEventListener("DOMContentLoaded", () => {
+            if (typeof renderMathInElement !== "function") return;
+            try {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        { left: "$$", right: "$$", display: true },
+                        { left: "\\(", right: "\\)", display: false },
+                        { left: "\\[", right: "\\]", display: true },
+                    ],
+                    throwOnError: false,
+                });
+            } catch {
+                // ignore rendering errors
+            }
+        });
+    </script>
+
+    <footer class="sources-footer">
+        <hr />
+        <details>
+            <summary>Collins / Clogston formulas used</summary>
+            <div>
+                <ul class="sources-list">
+                    <li><strong>Reduced (dimensionless) parameters</strong> (Collins Eq. 25)
+                        <ul class="sources-list">
+                            <li>\(b = B/\bar{B}\)</li>
+                            <li>\(v = V/\bar{V}\)</li>
+                            <li>\(i = I/\bar{I}\)</li>
+                            <li>\(g = G_L/\bar{G}\)</li>
+                            <li>\(p = P/\bar{P}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Characteristic scales</strong> (Collins Eq. 26)
+                        <ul class="sources-list">
+                            <li>\(\bar{B} = \frac{2\,\omega_s}{(e/m)\,(1-(r_c/r_a)^2)}\)</li>
+                            <li>\(\bar{V} = \frac{r_a^2\,\omega_s^2}{2\,(e/m)}\)</li>
+                            <li>
+                                \(\bar{I} = \frac{2\pi\,a_1(r_a/r_c)}{\left(1-(r_c/r_a)^2\right)^2\,(r_a/r_c+1)}\,\frac{m}{e}\,\omega_s^3\,r_a^2\,\varepsilon_0\,L_a\)
+                                <div class="sources-note" style="border-top: none; padding-top: 0;">Here \(a_1(r_a/r_c)\) comes from Collins Fig. 10‑9 (digitized and embedded as a piecewise‑linear curve).</div>
+                            </li>
+                            <li>\(\bar{G} = \bar{I}/\bar{V}\)</li>
+                            <li>\(\bar{P} = \bar{I}\,\bar{V}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Intermediate definitions used in this tool</strong>
+                        <ul class="sources-list">
+                            <li>Operating mode angular frequency: \(\omega_s = 2\pi f / (N_v/2)\)</li>
+                            <li>In code, \(p\) uses \(P =\) requested RF output power (so it reflects the operating point and efficiency assumptions).</li>
+                            <li>\(g\) uses an estimated load conductance \(G_L\) (so \(g\) is approximate):
+                                <ul class="sources-list">
+                                    <li>Equivalent capacitance (coaxial approximation): \(C_{eq} \approx 2\pi\varepsilon_0 L_a/\ln(r_a/r_c)\)</li>
+                                    <li>External \(Q\) estimate: \(1/Q_L = 1/Q_U + 1/Q_{ext}\Rightarrow Q_{ext}=1/(1/Q_L-1/Q_U)\)</li>
+                                    <li>Conductance from \(Q\): \(G_L \approx \omega_s C_{eq} / Q_{ext}\) (fallback: \(\omega_s C_{eq} / Q_L\))</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </details>
+        <details>
+            <summary>Sources & References</summary>
+            <div>
+                <strong style="color: var(--ink); display: block; margin-bottom: 8px; margin-top: 4px;">Books</strong>
+                <ul class="sources-list">
+                    <li><strong>Carter, R.G. (2018).</strong> <em>Microwave and RF Vacuum Electronic Power Sources.</em> Cambridge University Press. — Primary source for all core equations (§15 throughout): operating point (eq. 15.22, 15.23, 15.40, 15.49), frequency stability (eq. 15.88, 15.93), circuit coupling (eq. 15.20), Clogston parameters (eq. 15.143–15.145), Modified Slater Factor (eq. 15.154), cathode back-bombardment model (§15.6.1), and design case study (§15.7.3).</li>
+                    <li><strong>Collins, G.B. et al. (1948).</strong> <em>Microwave Magnetrons, MIT Radiation Laboratory Series Vol. 6.</em> McGraw-Hill. — Strap admittance derivation (§5), cavity Q from the Kroll formula (§3), anode power density limits for CW tubes (Ch. 8), and the Clogston universal dimensionless design parameters (§16).</li>
+                    <li><strong>Clogston, A.M. (1948).</strong> "Principles of Design", in Collins §16. — Universal dimensionless parameters v, b, i and the Va/VH operating range 0.50–0.90.</li>
+                    <li><strong>Kroll, N. (1948).</strong> "The unstrapped resonant system", in Collins §3. — Cavity depth formula d ≈ 0.30λ (quarter-wave resonance corrected for fringing fields) and the cavity Q estimate from volume and surface area.</li>
+                </ul>
+
+                <strong style="color: var(--ink); display: block; margin-bottom: 8px; margin-top: 12px;">Journal Papers</strong>
+                <ul class="sources-list">
+                    <li><strong>McDowell, H.L. (1998).</strong> "Magnetron simulations using a moving wavelength computer code". <em>IEEE Transactions on Plasma Science,</em> <strong>26</strong>, 733–754. — 4J52 reference data (Tables 15.2, 15.3 in Carter), cathode return fraction α ≈ 0.75, and the three emission regimes (primary-dominated, secondary-dominated, primary-limited).</li>
+                    <li><strong>Adler, R. (1946).</strong> "A study of locking phenomena in oscillators". <em>Proceedings of the IRE,</em> <strong>34</strong>, 351–357. — Injection-locking theory used in the linac justification text.</li>
+                    <li><strong>Tahir, I. et al. (2005).</strong> "Noise performance of frequency- and phase-locked CW magnetrons operated as current-controlled oscillators". <em>IEEE Transactions on Electron Devices,</em> <strong>52</strong>, 2096–2103. — Injection-locking power requirement (~10 dB below output) cited in the coaxial linac recommendation.</li>
+                    <li><strong>Shibata, C. et al. (1991).</strong> "High-power (500 kW) c.w. magnetron for industrial heating". <em>Electrical Engineering in Japan,</em> <strong>111</strong>, 94–100. — 500 kW CW magnetron design case study, reference entry cw500k in the database.</li>
+                    <li><strong>Faillace, L. et al. (2021).</strong> — L3 L6170-02 X-band coaxial magnetron data for the compact linac application, reference entry l3l6170.</li>
+                    <li><strong>Liu, Z. et al. (2024).</strong> <em>MetalMat.</em> — Cathode emission density limits: oxide (8 A/cm² pulse, 0.4 CW), dispenser Ba-W (30 A/cm² pulse, 5 CW), thoriated W (5 A/cm² pulse, 1 CW), matrix/scandate (40 A/cm² pulse, 7 CW); secondary emission coefficients δ<sub>m</sub>; operating temperature ranges.</li>
+                    <li><strong>Mistry, P. & Mineo, M. (2017).</strong> ARMMS RF &amp; Microwave Society conference. — MG7095 S-band magnetron data (3.1 MW, 48 kV, 130 A), reference entry mg7095.</li>
+                </ul>
+
+                <strong style="color: var(--ink); display: block; margin-bottom: 8px; margin-top: 12px;">Datasheets</strong>
+                <ul class="sources-list">
+                    <li><strong>Teledyne e2v. (2023).</strong> MG5193 Tunable S-Band Magnetron, Document A1A-MG5193 Version 10. — 2.6 MW peak, 45 kV, 110 A, 155 mT, 2993–3002 MHz; frequency pulling ≤7 MHz; stability ≤0.5%; reference entry mg5193.</li>
+                    <li><strong>CPI.</strong> VMC3105 Datasheet. — C-band coaxial, 2.5 MW, 45 kV, 125 A, 280 mT, 5.6 GHz; reference entry vmc3105.</li>
+                    <li><strong>CPI.</strong> VMC3109 Datasheet. — C-band coaxial, 2.5 MW, ±10 MHz tunable; reference entry vmc3109.</li>
+                    <li><strong>CPI.</strong> SFD349 Datasheet. — X-band coaxial radar transmitter, 200 kW, 15 kV; reference entry sfd349.</li>
+                </ul>
+
+                <strong style="color: var(--ink); display: block; margin-bottom: 8px; margin-top: 12px;">Other Design Data</strong>
+                <ul class="sources-list">
+                    <li><strong>Carter (2018) Tables 15.2–15.4</strong> — 4J50 and 4J52 reference designs, and the table of typical impedances and efficiencies by magnetron type that underlies all the auto-estimated η and Z<sub>dc</sub> values.</li>
+                    <li><strong>Carter (2018) Table 15.1</strong> — Coaxial vs conventional comparison: pulling 3 vs 14 MHz, pushing 0.08 vs 0.4 MHz/A, tuning range 20% vs 10%, used directly in the coaxial type justification.</li>
+                </ul>
+
+                <p class="sources-note">This calculator is based on established vacuum electronics theory validated against modern tube datasheets and is intended for initial design exploration and educational purposes.</p>
+            </div>
+        </details>
+    </footer>
+</body>
+</html>
+
