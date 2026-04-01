@@ -535,10 +535,14 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
         Tv_tip_K = _vane_tip_temperature_K(Pa_avg_W, Nv, t_vane_m, La)
 
         # Anode power density (CW only) — Collins Ch. 8 limit ≤ 25 W/cm²
+        # Use an effective copper area based on total cavity surface area
+        # (Nv cavities), not just the smooth cylindrical area 2πr_a L_a.
+        # The cylindrical area alone substantially overestimates Pd.
         Pd_cw = 0.0
         if is_cw:
-            Anode_cm2 = 2 * math.pi * ra * La * 1e4
-            Pd_cw = (dc["Pdc"] - dc["P_kw"] * 1e3) / Anode_cm2  # W/cm²
+            Pa_W = max(0.0, dc["Pdc"] - dc["P_kw"] * 1e3)
+            A_cu_cm2 = (Nv * Ac) * 1e4
+            Pd_cw = (Pa_W / A_cu_cm2) if A_cu_cm2 > 0 else 0.0  # W/cm²
 
         # π−1 mode threshold — Carter eq. 15.40 for n → n−1
         nm1  = max(n - 1, 1)
