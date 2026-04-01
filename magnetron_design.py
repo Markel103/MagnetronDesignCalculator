@@ -460,7 +460,7 @@ def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
     }
 
 
-def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
+def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
     """
     Sweep N_v from 6 to 26 (even only) and compute geometry + checks.
     Returns list of row dicts; rec = row with highest score that has no fatal issues.
@@ -473,6 +473,8 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
     V0, VH  = dc["V0"], dc["VH"]
     lam     = dc["lam"]
     is_cw   = (t["duty"] == "cw")
+    duty_cycle = float(duty_cycle) if duty_cycle is not None else (1.0 if is_cw else 0.001)
+    duty_cycle = max(0.0, min(1.0, duty_cycle))
     Jlim    = cath["Jcw"] if is_cw else cath["Jpulse"]
     La      = (0.16 if is_cw else 0.12) * lam  # anode axial length (m)
     QL      = t["QL"]
@@ -525,11 +527,12 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
         pitch_m = 2 * math.pi * ra / Nv
         t_vane_m = (1 - fill) * pitch_m
 
-        Tv_tip_K = float("nan")
-        if is_cw:
-            # Carter Eq. 15.155: Pa = Pdc - Prf (neglect cathode dissipation)
-            Pa_W = dc["Pdc"] - dc["P_kw"] * 1e3
-            Tv_tip_K = _vane_tip_temperature_K(Pa_W, Nv, t_vane_m, La)
+        # Vane-tip temperature (thermal conduction model) using duty-cycle-corrected
+        # average anode dissipation. Carter Eq. 15.155 assumes Pa = Pdc - Prf.
+        # For pulsed operation, use average dissipation Pa_avg ≈ Pa_peak * duty.
+        Pa_peak_W = max(0.0, dc["Pdc"] - dc["P_kw"] * 1e3)
+        Pa_avg_W = Pa_peak_W * duty_cycle
+        Tv_tip_K = _vane_tip_temperature_K(Pa_avg_W, Nv, t_vane_m, La)
 
         # Anode power density (CW only) — Collins Ch. 8 limit ≤ 25 W/cm²
         Pd_cw = 0.0
@@ -620,7 +623,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
         elif is_cw and Pd_cw > 25:
             issues.append(("warn",  f"Pd {Pd_cw:.1f} W/cm² > 25"))
 
-        if is_cw and math.isfinite(Tv_tip_K):
+        if math.isfinite(Tv_tip_K):
             if Tv_tip_K > T_VANE_FATAL_K:
                 issues.append(("fatal", f"Vane tip T {Tv_tip_K - 273.15:.0f}°C > 700°C"))
             elif Tv_tip_K > T_VANE_WARN_K:
@@ -632,7 +635,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
 
         fatal = any(s == "fatal" for s, _ in issues)
         temp_penalty = 0.0
-        if is_cw and math.isfinite(Tv_tip_K) and Tv_tip_K > T_VANE_WARN_K:
+        if math.isfinite(Tv_tip_K) and Tv_tip_K > T_VANE_WARN_K:
             temp_penalty = (Tv_tip_K - T_VANE_WARN_K) * 0.35
         score = (
             (min(msep, 40) if msep > 0 else -200)
@@ -654,7 +657,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill):
             "t_vane_mm": t_vane_m * 1e3,
             "Jc": Jc, "Jlim": Jlim,
             "Pd_cw": Pd_cw,
-            "Tv_tip_C": (Tv_tip_K - 273.15) if (is_cw and math.isfinite(Tv_tip_K)) else float("nan"),
+            "Tv_tip_C": (Tv_tip_K - 273.15) if math.isfinite(Tv_tip_K) else float("nan"),
             "VTn1_kV": VTn1 / 1e3,
             "msep": msep,
             "QU": QU,
@@ -1044,6 +1047,7 @@ def _resolve_design_inputs(raw_params):
         cath = match["cath"] if cath == "disp" else cath
         eta = match["eta"] if eta is None else eta
         Zdc = match["Zdc"] if Zdc is None else Zdc
+        duty_cycle = match.get("duty") if duty_cycle is None else duty_cycle
 
     # Explicit params override preset/db values.
     f_exp = _to_float("freq")
@@ -1075,19 +1079,22 @@ def _resolve_design_inputs(raw_params):
         raise ValueError("Missing required inputs: freq, power, and type (or provide preset/load_db).")
 
     # Duty-cycle handling (UI can use a combined strapped type selector).
-    if duty_cycle is None:
-        duty_cycle = 1.0
-    if not (0 < duty_cycle <= 1.0):
-        raise ValueError("duty must be in (0, 1]")
-
     # Map combined strapped type to the existing CW/pulsed internal keys.
     # Requirement: duty==1 is considered CW.
     if str(t_id).strip().lower() in {"s", "strapped"}:
-        t_id = "s_cw" if duty_cycle >= 1.0 else "s_pls"
+        dc_for_map = 1.0 if duty_cycle is None else float(duty_cycle)
+        t_id = "s_cw" if dc_for_map >= 1.0 else "s_pls"
 
     if t_id not in TYPES:
         valid = ", ".join(sorted(set(TYPES.keys()) | {"s"}))
         raise ValueError(f"Invalid type '{t_id}'. Valid: {valid}")
+    # If duty was not provided, choose a reasonable default by type.
+    # CW defaults to 1.0; pulsed defaults to 0.001 (typical radar/linac order).
+    if duty_cycle is None:
+        duty_cycle = 1.0 if TYPES[t_id]["duty"] == "cw" else 0.001
+    if not (0 < duty_cycle <= 1.0):
+        raise ValueError("duty must be in (0, 1]")
+
     if cath not in CATHODES:
         raise ValueError(f"Invalid cath '{cath}'. Valid: {', '.join(CATHODES.keys())}")
     if not (0.1 <= fill <= 0.9):
@@ -1126,7 +1133,7 @@ def compute_design_payload(inputs):
     if dc is None:
         raise ValueError("Could not compute a valid DC operating point with the provided parameters.")
 
-    rows, rec = sweep_vanes(dc, t_id, cath_id, inputs["etac_pct"], inputs["rp"], inputs["fill"])
+    rows, rec = sweep_vanes(dc, t_id, cath_id, inputs["etac_pct"], inputs["rp"], inputs["fill"], inputs.get("duty_cycle", 1.0))
     score_lines, justification, best_type = justify_type(
         t_id,
         f_ghz,
