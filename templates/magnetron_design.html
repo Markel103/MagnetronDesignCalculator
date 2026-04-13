@@ -633,13 +633,21 @@
                     </div>
 
                     <div class="row">
-                        <label>Reference DB ID (load_db)
-                            <input name="load_db" type="text" placeholder="mg5193" />
+                        <label>Anode length (La/λ)
+                            <input name="la_ratio" type="number" step="0.01" placeholder="auto" />
+                            <div class="help-text">Normalized anode axial length. Auto-filled: 0.16 for most magnetron types; 1.5 for Long-Anode. Typical ranges: 0.12–0.30 (most), 0.40–2.50 (Long-Anode).</div>
                         </label>
                         <label>Duty cycle (0–1)
                             <input name="duty" type="number" step="0.001" min="0" max="1" value="1" placeholder="1.0" />
                             <div class="help-text">Duty=1 is CW. For pulsed types, duty is used to compute average anode dissipation for Tv (simple duty-corrected thermal estimate).</div>
                         </label>
+                    </div>
+
+                    <div class="row">
+                        <label>Reference DB ID (load_db)
+                            <input name="load_db" type="text" placeholder="mg5193" />
+                        </label>
+                        <div></div>
                     </div>
 
                     <div class="btns">
@@ -703,7 +711,7 @@
                         <div class="geom-canvas-wrap">
                             <canvas id="geomSketchCanvas"></canvas>
                         </div>
-                        <div id="geomSketchNote" class="geom-sketch-note">No geometry sketch available yet.</div>
+                        <div id="geomSketchNote" class="geom-sketch-note">No geometry sketch available yet. Diagram is an approximation and is not fully valid for magnetron types such as strapped and rising-sun.</div>
                     </section>
 
                     <section id="collinsParams" class="clogston">
@@ -839,6 +847,19 @@
         form.eta.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.eta, form.eta));
         form.zdc.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.zdc, form.zdc));
 
+        function defaultLaRatioForType(typeId) {
+            return (String(typeId || "") === "la") ? 1.5 : 0.16;
+        }
+
+        function updateLaRatioAutofill(force = false) {
+            if (!form.la_ratio) return;
+            const current = String(form.la_ratio.value || "").trim();
+            if (!force && current !== "") return;
+            const typeId = String(form.type.value || "");
+            if (!typeId) return;
+            form.la_ratio.value = defaultLaRatioForType(typeId);
+        }
+
         function setStatus(text, mode) {
             statusEl.textContent = text;
             statusEl.className = `status ${mode || ""}`.trim();
@@ -964,12 +985,18 @@
                 return;
             }
 
+            const gapMm = (Number.isFinite(Number(rec.gap_mm)))
+                ? Number(rec.gap_mm)
+                : ((Number.isFinite(Number(rec.ra_mm)) && Number.isFinite(Number(rec.rc_mm)))
+                    ? (Number(rec.ra_mm) - Number(rec.rc_mm))
+                    : NaN);
+
             clearGeometry("");
             pushGeomRow("Recommended vane count (Nv)", `${rec.Nv ?? "-"}`);
             pushGeomRow("Anode radius ra", `${fmtNum(rec.ra_mm, 3)} mm`);
             pushGeomRow("Cathode radius rc", `${fmtNum(rec.rc_mm, 3)} mm`);
             pushGeomRow("Radius ratio rc/ra", fmtNum(rec.xi, 4));
-            pushGeomRow("Interaction gap ra-rc", `${fmtNum(rec.gap_mm, 3)} mm`);
+            pushGeomRow("Interaction gap ra-rc", `${fmtNum(gapMm, 3)} mm`);
             pushGeomRow("Vane pitch", `${fmtNum(rec.pitch_mm, 3)} mm`);
             pushGeomRow("Gap width w", `${fmtNum(rec.w_gap_mm, 3)} mm`);
             pushGeomRow("Vane thickness t", `${fmtNum(rec.t_vane_mm, 3)} mm`);
@@ -1282,7 +1309,8 @@
             ctx.fillStyle = "#6b7a86";
             ctx.font = "13px Segoe UI";
             ctx.fillText("No magnetron geometry sketch available.", 14, 22);
-            geomSketchNoteEl.textContent = message || "No geometry sketch available yet.";
+            const note = message || "No geometry sketch available yet.";
+            geomSketchNoteEl.textContent = `${note} Diagram is an approximation and is not fully valid for magnetron types such as strapped and rising-sun.`;
         }
 
         function drawGeometrySketch(data) {
@@ -1479,7 +1507,7 @@
             ctx.fill();
             ctx.fillText(`t=${tEff.toFixed(2)} mm`, tx1 + 8, ty1 - 2);
 
-            geomSketchNoteEl.textContent = "Sketch follows Carter/Collins cylindrical definitions and updates with selected vane-count candidate.";
+            geomSketchNoteEl.textContent = "Sketch follows Carter/Collins cylindrical definitions and updates with selected vane-count candidate. Diagram is an approximation and is not fully valid for magnetron types such as strapped and rising-sun.";
         }
 
         function clearSweep(message) {
@@ -1606,11 +1634,18 @@
 
         function renderGeometryForRow(rec) {
             clearGeometry("");
+
+            const gapMm = (Number.isFinite(Number(rec.gap_mm)))
+                ? Number(rec.gap_mm)
+                : ((Number.isFinite(Number(rec.ra_mm)) && Number.isFinite(Number(rec.rc_mm)))
+                    ? (Number(rec.ra_mm) - Number(rec.rc_mm))
+                    : NaN);
+
             pushGeomRow("Selected vane count (Nv)", `${rec.Nv ?? "-"}`);
             pushGeomRow("Anode radius ra", `${fmtNum(rec.ra_mm, 3)} mm`);
             pushGeomRow("Cathode radius rc", `${fmtNum(rec.rc_mm, 3)} mm`);
             pushGeomRow("Radius ratio rc/ra", fmtNum(rec.xi, 4));
-            pushGeomRow("Interaction gap ra-rc", `${fmtNum(rec.gap_mm, 3)} mm`);
+            pushGeomRow("Interaction gap ra-rc", `${fmtNum(gapMm, 3)} mm`);
             pushGeomRow("Vane pitch", `${fmtNum(rec.pitch_mm, 3)} mm`);
             pushGeomRow("Gap width w", `${fmtNum(rec.w_gap_mm, 3)} mm`);
             pushGeomRow("Vane thickness t", `${fmtNum(rec.t_vane_mm, 3)} mm`);
@@ -1724,7 +1759,10 @@
             form.etac.value = p.etaC ?? "";
             form.rp.value = p.Rp ?? "";
             form.fill.value = p.fill ?? "";
+            form.la_ratio.value = "";
             form.load_db.value = "";
+
+            updateLaRatioAutofill(true);
 
             saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
             saveSelectToStorage(STORAGE_KEYS.cath, cathSelect);
@@ -1761,8 +1799,12 @@
         typeSelect.addEventListener("change", () => {
             saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
             updateEtaZdc();
+            updateLaRatioAutofill(false);
         });
         form.freq.addEventListener("change", updateEtaZdc);
+
+        // Ensure la_ratio has a sensible default on initial load.
+        updateLaRatioAutofill(false);
 
         // Only auto-estimate on load if the user didn't already have stored values.
         if (!(etaRestored || zdcRestored)) {
@@ -1804,6 +1846,113 @@
 
     <footer class="sources-footer">
         <hr />
+        <details>
+            <summary>Core operating-point & geometry formulas used</summary>
+            <div>
+                <ul class="sources-list">
+                    <li><strong>Definitions</strong>
+                        <ul class="sources-list">
+                            <li>RF output power: \(P_{rf}\)</li>
+                            <li>DC impedance: \(Z_{dc} = V_a/I_a\)</li>
+                            <li>Overall efficiency: \(\eta = P_{rf}/P_{dc}\)</li>
+                            <li>Circuit efficiency: \(\eta_C\)</li>
+                            <li>Electronic efficiency used in Carter’s operating-point model: \(\eta_E = \eta/\eta_C\)</li>
+                            <li>Free-space wavelength: \(\lambda = c/f\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>DC operating point</strong> (Carter §15; implemented in <code>compute_dc_point</code>)
+                        <ul class="sources-list">
+                            <li>\(P_{dc} = P_{rf}/\eta\)</li>
+                            <li>\(V_a = \sqrt{P_{dc}\,Z_{dc}}\)</li>
+                            <li>\(I_a = P_{dc}/V_a\)</li>
+                            <li>Carter Eq. 15.49 (inverse form used in code):
+                                \(\eta_E \approx \frac{2r-3}{2r-1}\;\Rightarrow\; r = \frac{3-\eta_E}{2\,(1-\eta_E)}\)</li>
+                            <li>Carter Eq. 15.22: \(V_0 = \frac{V_a}{2r-1}\)</li>
+                            <li>Hull cut-off voltage: \(V_H = r^2\,V_0\)</li>
+                            <li>Operating ratio reported: \(V_a/V_H\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Material / conductor loss primitives</strong>
+                        <ul class="sources-list">
+                            <li>Copper skin depth: \(\delta_s = \sqrt{\frac{\rho_{Cu}}{\pi f\,\mu_0}}\)</li>
+                            <li>Copper surface resistance: \(R_s = \sqrt{\pi f\,\mu_0\,\rho_{Cu}}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Synchronous rotation and radii</strong> (Carter Eq. 15.22; implemented in <code>sweep_vanes</code>)
+                        <ul class="sources-list">
+                            <li>Number of cavities: \(n = N_v/2\)</li>
+                            <li>Synchronous angular frequency: \(\omega_s = 2\pi f / n\)</li>
+                            <li>Anode radius: \(r_a = \frac{\sqrt{2\,(e/m)\,V_0}}{\omega_s}\)</li>
+                            <li>Modified Slater factor closed form (Carter Eq. 15.154):
+                                \(\xi \equiv r_c/r_a = \frac{N_v\,(r-1) - R'\,r}{N_v\,(r-1) + R'\,r}\)</li>
+                            <li>Cathode radius: \(r_c = \xi\,r_a\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Magnetic fields</strong> (Carter Eq. 15.23)
+                        <ul class="sources-list">
+                            <li>Characteristic field: \(B_0 = \frac{2\,\omega_s}{(e/m)\,(1-\xi^2)}\)</li>
+                            <li>Operating axial field: \(B_z = r\,B_0\)</li>
+                            <li>Cyclotron ratio (used for heuristic checks): \(\omega_c/\omega_s = (e/m)\,B_z/\omega_s\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Geometry primitives</strong>
+                        <ul class="sources-list">
+                            <li>Anode axial length (heuristic): \(L_a = k\,\lambda\), with \(k\approx 0.16\) (CW) or \(k\approx 0.12\) (pulsed)</li>
+                            <li>Vane pitch: \(p_t = 2\pi r_a/N_v\)</li>
+                            <li>Gap width (fill factor): \(w_{gap} = \mathrm{fill}\cdot p_t\)</li>
+                            <li>Vane thickness (tangential): \(t_{vane} = (1-\mathrm{fill})\cdot p_t\)</li>
+                            <li>Cavity depth (Kroll quarter-wave corrected): \(d \approx 0.30\,\lambda\)</li>
+                            <li>Rectangular cavity volume estimate: \(V_c \approx d\,w_{gap}\,L_a\)</li>
+                            <li>Rectangular cavity surface area estimate: \(A_c \approx 2\,(d\,w_{gap} + d\,L_a + w_{gap}\,L_a)\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Cathode current density</strong>
+                        <ul class="sources-list">
+                            <li>Cathode return fraction (McDowell): \(\alpha\approx 0.75\Rightarrow I_c = I_a/(1-\alpha)\)</li>
+                            <li>Emission current density: \(J_c = \frac{I_c}{2\pi r_c L_a}\) (reported in A/cm\(^2\))</li>
+                        </ul>
+                    </li>
+                    <li><strong>Cavity Q (unloaded)</strong> (Kroll/Collins; used as \(Q_U\))
+                        <ul class="sources-list">
+                            <li>\(Q_U \approx \frac{2\pi f\,\mu_0\,V_c}{R_s\,A_c}\)</li>
+                            <li>Coaxial type correction used in code: \(Q_U \leftarrow 5.5\,Q_U\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Vane-tip temperature estimate</strong> (Carter Eq. 15.155–15.156)
+                        <ul class="sources-list">
+                            <li>Peak anode dissipation: \(P_{a,peak} \approx P_{dc} - P_{rf}\)</li>
+                            <li>Average anode dissipation (duty-cycle corrected): \(P_{a,avg} \approx P_{a,peak}\,D\)</li>
+                            <li>Heat-flow area: \(A_v = N_v\,t_{vane}\,L_a\)</li>
+                            <li>Vane-tip temperature: \(T_v = T_{cool} + \frac{P_{a,avg}\,L_{th}}{A_v\,\kappa_{Cu}}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>\(\pi-1\) mode separation check</strong> (Carter Eq. 15.40 pattern; implemented as an \(n\to n-1\) threshold)
+                        <ul class="sources-list">
+                            <li>\(\omega_{s,n-1} = 2\pi f /(n-1)\)</li>
+                            <li>\(B_{0,n-1} = \frac{2\,\omega_{s,n-1}}{(e/m)\,(1-\xi^2)}\)</li>
+                            <li>\(r_{n-1} = B_z/B_{0,n-1}\)</li>
+                            <li>\(V_{0,n-1} = \frac{r_a^2\,\omega_{s,n-1}^2}{2\,(e/m)}\)</li>
+                            <li>Threshold voltage: \(V_{T,n-1} = V_{0,n-1}\,(2r_{n-1}-1)\)</li>
+                            <li>Mode separation reported: \(\mathrm{sep}\% = 100\,\frac{V_{T,n-1}-V_a}{V_a}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>DC operating diagram curves</strong> (used in the UI plot)
+                        <ul class="sources-list">
+                            <li>Hull cut-off curve (cylindrical form): \(V_H(B) = V_0\,(B/B_0)^2\)</li>
+                            <li>Mode threshold line (generalized): \(V_{T,m}(B) = V_{0,m}\,(2\,(B/B_{0,m})-1)\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Frequency stability heuristics</strong> (used in the UI comparison table)
+                        <ul class="sources-list">
+                            <li>Pulling (MHz): \(\Delta f_{pull} \approx 0.417\,\frac{f_{MHz}}{Q_L}\)</li>
+                            <li>Pushing / electron loading (MHz): \(\Delta f_{push} \approx 0.6\,\frac{f_{MHz}}{Q_L}\)</li>
+                        </ul>
+                    </li>
+                </ul>
+
+                <p class="sources-note">Symbols match the API payload: \(V_a, I_a, V_0, V_H, B_0, B_z, r_a, r_c, N_v, L_a\). Constants \((e/m), \varepsilon_0, \mu_0, c, \rho_{Cu}\) are defined in <code>magnetron_design.py</code>.</p>
+            </div>
+        </details>
         <details>
             <summary>Collins / Clogston formulas used</summary>
             <div>

@@ -460,7 +460,7 @@ def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
     }
 
 
-def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
+def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_ratio=None):
     """
     Sweep N_v from 6 to 26 (even only) and compute geometry + checks.
     Returns list of row dicts; rec = row with highest score that has no fatal issues.
@@ -476,7 +476,11 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
     duty_cycle = float(duty_cycle) if duty_cycle is not None else (1.0 if is_cw else 0.001)
     duty_cycle = max(0.0, min(1.0, duty_cycle))
     Jlim    = cath["Jcw"] if is_cw else cath["Jpulse"]
-    La      = (0.16 if is_cw else 0.12) * lam  # anode axial length (m)
+
+    if la_ratio is None or not math.isfinite(float(la_ratio)) or float(la_ratio) <= 0:
+        la_ratio = 1.5 if type_id == "la" else 0.16
+    la_ratio = float(la_ratio)
+    La      = la_ratio * lam  # anode axial length (m)
     QL      = t["QL"]
     Rs      = dc["Rs_mOhm"] * 1e-3  # Ω/□
 
@@ -616,12 +620,12 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0):
             issues.append(("warn",  f"Jc {Jc:.2f} near limit {Jlim} A/cm²"))
         if wc_over_ws < 2.8:
             issues.append(("warn",  f"ωc/ωs = {wc_over_ws:.2f} < 3 (reduced η)"))
-        if wc_over_ws > 8.5:
-            issues.append(("warn",  f"ωc/ωs = {wc_over_ws:.2f} > 8 (excessive B)"))
+        if wc_over_ws > 15:
+            issues.append(("warn",  f"ωc/ωs = {wc_over_ws:.2f} > 15 (excessive B)"))
         if dc["VaVH"] > 0.92:
             issues.append(("warn",  "Va/VH > 0.92 — near cut-off"))
-        if dc["VaVH"] < 0.45:
-            issues.append(("warn",  "Va/VH < 0.45 — Collins range"))
+        if dc["VaVH"] < 0.18:
+            issues.append(("warn",  "Va/VH < 0.18 — very low (outside typical range)"))
         # NOTE: Pd_cw is retained for CLI/internal analysis, but is intentionally
         # not surfaced as a UI warning/fatal constraint.
 
@@ -1060,6 +1064,9 @@ def _resolve_design_inputs(raw_params):
     etac_exp = _to_float("etac")
     rp_exp = _to_float("rp")
     fill_exp = _to_float("fill")
+    la_exp = _to_float("la_ratio")
+    if la_exp is None:
+        la_exp = _to_float("la")
 
     f_ghz = f_exp if f_exp is not None else f_ghz
     P_kw = p_exp if p_exp is not None else P_kw
@@ -1069,6 +1076,8 @@ def _resolve_design_inputs(raw_params):
     etaC = etac_exp if etac_exp is not None else etaC
     Rp = rp_exp if rp_exp is not None else Rp
     fill = fill_exp if fill_exp is not None else fill
+
+    la_ratio = la_exp
 
     t_exp = params.get("type")
     if t_exp:
@@ -1090,6 +1099,15 @@ def _resolve_design_inputs(raw_params):
     if t_id not in TYPES:
         valid = ", ".join(sorted(set(TYPES.keys()) | {"s"}))
         raise ValueError(f"Invalid type '{t_id}'. Valid: {valid}")
+
+    # Normalized anode length La/λ.
+    if la_ratio is None:
+        la_ratio = 1.5 if t_id == "la" else 0.16
+    if not math.isfinite(float(la_ratio)):
+        raise ValueError("la_ratio must be a finite number")
+    la_ratio = float(la_ratio)
+    if not (0.01 <= la_ratio <= 10.0):
+        raise ValueError("la_ratio must be in [0.01, 10]")
     # If duty was not provided, choose a reasonable default by type.
     # CW defaults to 1.0; pulsed defaults to 0.001 (typical radar/linac order).
     if duty_cycle is None:
@@ -1115,6 +1133,7 @@ def _resolve_design_inputs(raw_params):
         "etac_pct": etaC,
         "rp": Rp,
         "fill": fill,
+        "la_ratio": la_ratio,
         "preset": preset_id,
         "load_db": db_id,
     }
@@ -1135,7 +1154,16 @@ def compute_design_payload(inputs):
     if dc is None:
         raise ValueError("Could not compute a valid DC operating point with the provided parameters.")
 
-    rows, rec = sweep_vanes(dc, t_id, cath_id, inputs["etac_pct"], inputs["rp"], inputs["fill"], inputs.get("duty_cycle", 1.0))
+    rows, rec = sweep_vanes(
+        dc,
+        t_id,
+        cath_id,
+        inputs["etac_pct"],
+        inputs["rp"],
+        inputs["fill"],
+        inputs.get("duty_cycle", 1.0),
+        inputs.get("la_ratio"),
+    )
     score_lines, justification, best_type = justify_type(
         t_id,
         f_ghz,
@@ -1160,6 +1188,7 @@ def compute_design_payload(inputs):
             "ra_mm": rr["ra_mm"],
             "rc_mm": rr["rc_mm"],
             "xi": rr["xi"],
+            "gap_mm": rr["ra_mm"] - rr["rc_mm"],
             "B0_mT": rr["B0_mT"],
             "Bz_mT": rr["Bz_mT"],
             "pitch_mm": rr["pitch_mm"],
@@ -1198,6 +1227,7 @@ def compute_design_payload(inputs):
             "etac_pct": inputs["etac_pct"],
             "rp": inputs["rp"],
             "fill": inputs["fill"],
+            "la_ratio": inputs.get("la_ratio"),
             "preset": inputs["preset"],
             "load_db": inputs["load_db"],
         },
