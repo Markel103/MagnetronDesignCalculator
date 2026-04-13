@@ -3,4 +3,4 @@ __pycache__/
 
 # Reference material (avoid publishing accidentally)
 *.pdf
-collins_microwave_magnetrons_ocr.txt
+/collins_microwave_magnetrons_ocr.txt
