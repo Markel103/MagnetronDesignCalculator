@@ -462,7 +462,7 @@ def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
 
 def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_ratio=None):
     """
-    Sweep N_v from 6 to 26 (even only) and compute geometry + checks.
+    Sweep N_v from 6 to 34 (even only) and compute geometry + checks.
     Returns list of row dicts; rec = row with highest score that has no fatal issues.
     """
     t       = TYPES[type_id]
@@ -485,7 +485,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
     Rs      = dc["Rs_mOhm"] * 1e-3  # Ω/□
 
     rows = []
-    for Nv in range(6, 28, 2):
+    for Nv in range(6, 36, 2):
         n   = Nv // 2
         ws  = 2 * math.pi * f * 1e9 / n    # synchronous angular velocity (rad/s)
 
@@ -797,7 +797,7 @@ def col_flag(issues, is_cw=False):
 
 
 def print_vane_table(rows, rec, is_cw):
-    print_section(f"Vane-count sweep  Nv = 6…26  [★ = recommended]")
+    print_section(f"Vane-count sweep  Nv = 6…34  [★ = recommended]")
 
     # Header
     cw_col = f"  {'Pd':>7}" if is_cw else ""
