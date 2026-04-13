@@ -50,6 +50,48 @@ MU0   = 4*math.pi*1e-7  # vacuum permeability (H/m)
 C     = 3e8          # speed of light (m/s)
 RCU   = 1.72e-8      # Cu resistivity at 20°C (Ω·m)
 
+
+def kilpatrick_field_MVm(f_ghz: float) -> float:
+    """Return the Kilpatrick RF breakdown field threshold in MV/m.
+
+    Classic Kilpatrick relation:
+
+        f_MHz = 1.64 * E^2 * exp(-8.5/E)
+
+    with E in MV/m.
+
+    Notes:
+    - This criterion is a heuristic primarily used for RF structures.
+    - In this tool it is used as a conservative geometry+field sanity check.
+    """
+    try:
+        f_mhz = float(f_ghz) * 1e3
+    except Exception:
+        return float("nan")
+    if not math.isfinite(f_mhz) or f_mhz <= 0:
+        return float("nan")
+
+    def g(E: float) -> float:
+        return 1.64 * (E * E) * math.exp(-8.5 / E)
+
+    lo = 0.1
+    hi = 20.0
+    while hi < 400.0 and g(hi) < f_mhz:
+        hi *= 1.6
+
+    if g(lo) > f_mhz:
+        return lo
+    if g(hi) < f_mhz:
+        return hi
+
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        if g(mid) < f_mhz:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
 # ─── Thermal / vane-tip temperature (Carter §15.7, Eq. 15.155–15.156) ───────
 COPPER_KAPPA = 401.0  # W/(m·K) thermal conductivity of OFHC copper
 T_COOL_K = 293.0      # K (≈20°C) cooling-channel reference temperature
@@ -484,6 +526,9 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
     QL      = t["QL"]
     Rs      = dc["Rs_mOhm"] * 1e-3  # Ω/□
 
+    # Kilpatrick criterion (RF breakdown heuristic) at the operating frequency.
+    E_kp_MVm = kilpatrick_field_MVm(f)
+
     rows = []
     for Nv in range(6, 36, 2):
         n   = Nv // 2
@@ -608,6 +653,21 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
         P_out = dc["P_kw"] * 1e3
         p = (P_out / Pbar) if (Pbar > 0 and math.isfinite(Pbar)) else float("nan")
 
+        # Kilpatrick breakdown heuristic fields.
+        # 1) Anode–cathode peak electrostatic field at the cathode surface:
+        #    E_max(r=rc) = Va / (rc * ln(ra/rc)).
+        # 2) Vane-gap RF field using the slot width w_gap and a conservative
+        #    RF gap-voltage scale of V0 (characteristic voltage).
+        E_ak_peak_MVm = float("nan")
+        E_vane_gap_MVm = float("nan")
+        if ra > rc and rc > 0:
+            try:
+                E_ak_peak_MVm = (Va / (rc * math.log(ra / rc))) / 1e6
+            except (ValueError, ZeroDivisionError, OverflowError):
+                E_ak_peak_MVm = float("nan")
+        if w_gap > 0:
+            E_vane_gap_MVm = (V0 / w_gap) / 1e6
+
         # Issue flags
         issues = []
         if msep < 0:
@@ -626,6 +686,33 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
             issues.append(("warn",  "Va/VH > 0.92 — near cut-off"))
         if dc["VaVH"] < 0.18:
             issues.append(("warn",  "Va/VH < 0.18 — very low (outside typical range)"))
+
+        if math.isfinite(E_kp_MVm) and E_kp_MVm > 0:
+            if math.isfinite(E_ak_peak_MVm):
+                ratio_ak = E_ak_peak_MVm / E_kp_MVm
+                if ratio_ak > 1.20:
+                    issues.append((
+                        "fatal",
+                        f"Kilpatrick: E_ak={E_ak_peak_MVm:.1f} MV/m > 1.2xE_kp ({E_kp_MVm:.1f})",
+                    ))
+                elif ratio_ak > 1.00:
+                    issues.append((
+                        "warn",
+                        f"Kilpatrick: E_ak={E_ak_peak_MVm:.1f} MV/m > E_kp ({E_kp_MVm:.1f})",
+                    ))
+
+            if math.isfinite(E_vane_gap_MVm):
+                ratio_vane = E_vane_gap_MVm / E_kp_MVm
+                if ratio_vane > 1.20:
+                    issues.append((
+                        "fatal",
+                        f"Kilpatrick: E_vane≈V0/w={E_vane_gap_MVm:.1f} MV/m > 1.2xE_kp ({E_kp_MVm:.1f})",
+                    ))
+                elif ratio_vane > 1.00:
+                    issues.append((
+                        "warn",
+                        f"Kilpatrick: E_vane≈V0/w={E_vane_gap_MVm:.1f} MV/m > E_kp ({E_kp_MVm:.1f})",
+                    ))
         # NOTE: Pd_cw is retained for CLI/internal analysis, but is intentionally
         # not surfaced as a UI warning/fatal constraint.
 
@@ -668,6 +755,9 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
             "msep": msep,
             "QU": QU,
             "b": b, "v": v, "ii": ii, "g": g, "p": p,
+            "E_kp_MVm": E_kp_MVm,
+            "E_ak_peak_MVm": E_ak_peak_MVm,
+            "E_vane_gap_MVm": E_vane_gap_MVm,
             "issues": issues,
             "score": score,
         })
@@ -1198,6 +1288,9 @@ def compute_design_payload(inputs):
             "t_vane_mm": rr["t_vane_mm"],
             "Jc_A_per_cm2": rr["Jc"],
             "Jlim_A_per_cm2": rr["Jlim"],
+            "E_kp_MVm": rr.get("E_kp_MVm"),
+            "E_ak_peak_MVm": rr.get("E_ak_peak_MVm"),
+            "E_vane_gap_MVm": rr.get("E_vane_gap_MVm"),
             "vane_tip_temp_C": rr.get("Tv_tip_C"),
             "VTn1_kV": rr["VTn1_kV"],
             "mode_sep_pct": rr["msep"],

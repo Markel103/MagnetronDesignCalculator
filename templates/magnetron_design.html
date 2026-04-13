@@ -602,10 +602,10 @@
         <section class="grid">
             <article class="panel input-panel">
                 <h2 class="section-title">Input Parameters</h2>
-                <form id="designForm">
+                <form id="designForm" novalidate>
                     <div class="row">
                         <label>Frequency (GHz)
-                            <input name="freq" type="number" step="0.1" placeholder="9.375" />
+                            <input name="freq" type="number" step="any" placeholder="9.375" />
                             <div class="help-text">Operating RF frequency. Affects tube size, efficiency estimate, and mode characteristics.</div>
                         </label>
                         <label>Power (kW)
@@ -646,14 +646,14 @@
                             <div class="help-text">Efficiency of external circuit (load coupling). Higher values reduce DC power requirement.</div>
                         </label>
                         <label>Modified Slater Factor rp
-                            <input name="rp" type="number" step="0.1" placeholder="2.0" />
+                            <input name="rp" type="number" step="any" placeholder="2.0" />
                             <div class="help-text">Correction factor for cavity resonance frequency. Small ~2.0; increase if frequency drifts up.</div>
                         </label>
                     </div>
 
                     <div class="row">
                         <label>Fill Factor (w/p)
-                            <input name="fill" type="number" step="0.01" placeholder="0.45" />
+                            <input name="fill" type="number" step="any" placeholder="0.45" />
                             <div class="help-text">Gap-to-pitch ratio (w/p). Controls interaction strength and mode selectivity; optimal ~0.40–0.50.</div>
                         </label>
                         <label>Preset
@@ -666,11 +666,11 @@
 
                     <div class="row">
                         <label>Anode length (La/λ)
-                            <input name="la_ratio" type="number" step="0.01" placeholder="auto" />
+                            <input name="la_ratio" type="number" step="any" placeholder="auto" />
                             <div class="help-text">Normalized anode axial length. Auto-filled: 0.16 for most magnetron types; 1.5 for Long-Anode. Typical ranges: 0.12–0.30 (most), 0.40–2.50 (Long-Anode).</div>
                         </label>
                         <label>Duty cycle (0–1)
-                            <input name="duty" type="number" step="0.001" min="0" max="1" value="1" placeholder="1.0" />
+                            <input name="duty" type="number" step="any" min="0" max="1" value="1" placeholder="1.0" />
                             <div class="help-text">Duty=1 is CW. For pulsed types, duty is used to compute average anode dissipation for Tv (simple duty-corrected thermal estimate).</div>
                         </label>
                     </div>
@@ -993,7 +993,10 @@
                 pushSummaryItem("Bz", `${fmtNum(rec.Bz_mT, 2)} mT`);
                 pushSummaryItem("Mode Separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
                 pushSummaryItem("Jc / Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
-                summaryFootEl.textContent = footText;
+                const level = issueLevel(rec);
+                const msg = issueText(rec.issues);
+                const statusSuffix = (level && level !== "ok") ? ` Status: ${String(level).toUpperCase()} — ${msg}` : "";
+                summaryFootEl.textContent = `${footText}${statusSuffix}`;
             } else {
                 summaryFootEl.textContent = "No valid recommended candidate for the provided operating point.";
             }
@@ -1042,7 +1045,10 @@
             pushGeomRow("Bz field", `${fmtNum(rec.Bz_mT, 2)} mT`);
             pushGeomRow("Mode separation", `${fmtNum(rec.mode_sep_pct, 2)} %`);
             pushGeomRow("Cathode loading Jc/Jlim", `${fmtNum(rec.Jc_A_per_cm2, 2)} / ${fmtNum(rec.Jlim_A_per_cm2, 2)} A/cm2`);
-            geomNoteEl.textContent = `Geometry shows the recommended non-fatal candidate from the vane sweep (marked with *). Click any sweep row to inspect its geometry. ${geometryApproxDisclaimer()}`;
+            const level = issueLevel(rec);
+            const msg = issueText(rec.issues);
+            const statusSuffix = (level && level !== "ok") ? ` Status: ${String(level).toUpperCase()} — ${msg}.` : "";
+            geomNoteEl.textContent = `Geometry shows the recommended non-fatal candidate from the vane sweep (marked with *). Click any sweep row to inspect its geometry.${statusSuffix} ${geometryApproxDisclaimer()}`;
         }
 
         function clearDcGraph(message) {
@@ -1981,6 +1987,15 @@
                         <ul class="sources-list">
                             <li>Hull cut-off curve (cylindrical form): \(V_H(B) = V_0\,(B/B_0)^2\)</li>
                             <li>Mode threshold line (generalized): \(V_{T,m}(B) = V_{0,m}\,(2\,(B/B_{0,m})-1)\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>Kilpatrick RF breakdown heuristic</strong> (used for sweep warnings)
+                        <ul class="sources-list">
+                            <li>Kilpatrick relation (classic RF guideline): \(f_{MHz} = 1.64\,E^2\,e^{-8.5/E}\), with \(E\) in MV/m</li>
+                            <li>Threshold field \(E_{kp}(f)\) is obtained by solving the above relation for \(E\) at the operating frequency</li>
+                            <li>Anode–cathode peak field estimate (coaxial approximation at \(r=r_c\)): \(E_{ak,peak} \approx \frac{V_a}{r_c\,\ln(r_a/r_c)}\)</li>
+                            <li>Vane-gap field estimate (slot heuristic): \(E_{vane} \approx \frac{V_0}{w_{gap}}\)</li>
+                            <li>Warning logic used in the sweep: warn if \(E/E_{kp} > 1.0\); fatal if \(E/E_{kp} > 1.2\)</li>
                         </ul>
                     </li>
                     <li><strong>Frequency stability heuristics</strong> (used in the UI comparison table)
