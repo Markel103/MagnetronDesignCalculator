@@ -1456,7 +1456,7 @@ def create_app():
         # Use CW strapped metadata as the base UI description.
         base = TYPES["s_cw"]
         ui_types["s"] = {
-            "label": "Strapped (duty cycle)",
+            "label": "Strapped",
             "duty": "duty",
             "QL": base["QL"],
             "apps": base["apps"],

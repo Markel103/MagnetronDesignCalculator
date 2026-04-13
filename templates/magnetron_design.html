@@ -1811,6 +1811,7 @@
         async function updateEtaZdc() {
             const typeId = form.type.value;
             const freq = parseFloat(form.freq.value);
+            const duty = form.duty ? parseFloat(form.duty.value) : NaN;
 
             if (!typeId || !Number.isFinite(freq)) {
                 return;
@@ -1819,6 +1820,9 @@
             const myReq = ++etaZdcReqId;
             try {
                 let url = `/estimate?type=${encodeURIComponent(typeId)}&freq=${encodeURIComponent(freq)}`;
+                if (Number.isFinite(duty)) {
+                    url += `&duty=${encodeURIComponent(duty)}`;
+                }
                 const res = await fetch(url);
                 if (!res.ok) return;
                 const data = await res.json();
@@ -1838,6 +1842,7 @@
             updateLaRatioAutofill(false);
         });
         form.freq.addEventListener("change", updateEtaZdc);
+        form.duty.addEventListener("change", updateEtaZdc);
 
         // Ensure la_ratio has a sensible default on initial load.
         updateLaRatioAutofill(false);
