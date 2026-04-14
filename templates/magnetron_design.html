@@ -97,6 +97,8 @@
         #dcGraph { grid-column: 2; min-width: 0; width: 100%; max-width: 100%; }
         #geometry { grid-column: 1; min-width: 0; }
         #sweep { grid-column: 2; min-width: 0; width: 100%; max-width: 100%; }
+        #sensitivity { grid-column: 1 / -1; min-width: 0; }
+        #buildFeasibility { grid-column: 1 / -1; min-width: 0; }
 
         .section-title {
             margin: 2px 0 12px;
@@ -410,6 +412,7 @@
         .chip.ok { background: #e8f7ef; color: #0f6a3e; }
         .chip.warn { background: #fff4df; color: #8b5200; }
         .chip.fatal { background: #fdecec; color: #b42318; }
+        .chip.na { background: rgba(255, 255, 255, 0.86); color: var(--muted); border: 1px solid var(--line); }
 
         .dc-graph {
             border: 1px solid #d4dde5;
@@ -605,11 +608,11 @@
                 <form id="designForm" novalidate>
                     <div class="row">
                         <label>Frequency (GHz)
-                            <input name="freq" type="number" step="any" placeholder="9.375" />
+                            <input name="freq" type="number" step="0.1" placeholder="9.375" />
                             <div class="help-text">Operating RF frequency. Affects tube size, efficiency estimate, and mode characteristics.</div>
                         </label>
                         <label>Power (kW)
-                            <input name="power" type="number" step="any" placeholder="250" />
+                            <input name="power" type="number" step="1" placeholder="250" />
                             <div class="help-text">RF output power (peak for pulsed, CW for continuous). Sets DC voltage/current requirements.</div>
                         </label>
                     </div>
@@ -631,29 +634,29 @@
 
                     <div class="row">
                         <label>Overall Efficiency eta (%)
-                            <input name="eta" type="number" step="any" placeholder="auto" />
+                            <input name="eta" type="number" step="1" placeholder="auto" />
                             <div class="help-text">RF-to-DC efficiency. Auto-filled from type; lower values increase required anode voltage/current.</div>
                         </label>
                         <label>DC Impedance zdc (kOhm)
-                            <input name="zdc" type="number" step="any" placeholder="auto" />
+                            <input name="zdc" type="number" step="0.01" placeholder="auto" />
                             <div class="help-text">Characteristic DC impedance (Va/Ia ratio). Auto-filled from type; affects voltage-vs-power trade-off.</div>
                         </label>
                     </div>
 
                     <div class="row">
                         <label>Circuit Efficiency etac (%)
-                            <input name="etac" type="number" step="any" placeholder="90" />
+                            <input name="etac" type="number" step="1" placeholder="90" />
                             <div class="help-text">Efficiency of external circuit (load coupling). Higher values reduce DC power requirement.</div>
                         </label>
                         <label>Modified Slater Factor rp
-                            <input name="rp" type="number" step="any" placeholder="2.0" />
+                            <input name="rp" type="number" step="0.1" placeholder="2.0" />
                             <div class="help-text">Correction factor for cavity resonance frequency. Small ~2.0; increase if frequency drifts up.</div>
                         </label>
                     </div>
 
                     <div class="row">
                         <label>Fill Factor (w/p)
-                            <input name="fill" type="number" step="any" placeholder="0.45" />
+                            <input name="fill" type="number" step="0.01" placeholder="0.45" />
                             <div class="help-text">Gap-to-pitch ratio (w/p). Controls interaction strength and mode selectivity; optimal ~0.40–0.50.</div>
                         </label>
                         <label>Preset
@@ -666,11 +669,11 @@
 
                     <div class="row">
                         <label>Anode length (La/λ)
-                            <input name="la_ratio" type="number" step="any" placeholder="auto" />
+                            <input name="la_ratio" type="number" step="0.01" placeholder="auto" />
                             <div class="help-text">Normalized anode axial length. Auto-filled: 0.16 for most magnetron types; 1.5 for Long-Anode. Typical ranges: 0.12–0.30 (most), 0.40–2.50 (Long-Anode).</div>
                         </label>
                         <label>Duty cycle (0–1)
-                            <input name="duty" type="number" step="any" min="0" max="1" value="1" placeholder="1.0" />
+                            <input name="duty" type="number" step="0.1" min="0" max="1" value="1" placeholder="1.0" />
                             <div class="help-text">Duty=1 is CW. For pulsed types, duty is used to compute average anode dissipation for Tv (simple duty-corrected thermal estimate).</div>
                         </label>
                     </div>
@@ -686,6 +689,7 @@
                         <button type="submit" class="primary">Calculate</button>
                         <button type="button" id="clearBtn" class="ghost">Clear</button>
                         <button type="button" id="sampleBtn" class="warm">Load Preset</button>
+                        <button type="button" id="exportBtn" class="ghost">Export</button>
                     </div>
                 </form>
                 <p id="status" class="status">Ready.</p>
@@ -754,11 +758,51 @@
                                     <th>Parameter</th>
                                     <th>Value</th>
                                     <th>Typical (p10–p90)</th>
+                                    <th>Inside/Outside typical</th>
                                 </tr>
                             </thead>
                             <tbody id="collinsBody"></tbody>
                         </table>
                         <div id="collinsNote" class="clogston-note">No parameter assessment yet.</div>
+                    </section>
+
+                    <section id="sensitivity" class="geom">
+                        <h3>Tolerances & Sensitivity (teaching)</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th rowspan="2">Metric</th>
+                                    <th rowspan="2">Base</th>
+                                    <th colspan="2">f (±1%)</th>
+                                    <th colspan="2">Power (±1%)</th>
+                                    <th colspan="2">Zdc (±1%)</th>
+                                    <th colspan="2">η (±1%)</th>
+                                    <th colspan="2">ηC (±1%)</th>
+                                </tr>
+                                <tr>
+                                    <th>−1%</th>
+                                    <th>+1%</th>
+                                    <th>−1%</th>
+                                    <th>+1%</th>
+                                    <th>−1%</th>
+                                    <th>+1%</th>
+                                    <th>−1%</th>
+                                    <th>+1%</th>
+                                    <th>−1%</th>
+                                    <th>+1%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sensitivityBody"></tbody>
+                        </table>
+                        <div id="sensitivityNote" class="geom-note">No sensitivity estimate yet.</div>
+                    </section>
+
+                    <section id="buildFeasibility" class="geom">
+                        <h3>Build Plausibility (magnets + cooling)</h3>
+                        <table>
+                            <tbody id="buildBody"></tbody>
+                        </table>
+                        <div id="buildNote" class="geom-note">No build plausibility summary yet.</div>
                     </section>
                 </div>
             </article>
@@ -789,9 +833,20 @@
         const presetSelect = document.getElementById("presetSelect");
         const clearBtn = document.getElementById("clearBtn");
         const sampleBtn = document.getElementById("sampleBtn");
+        const exportBtn = document.getElementById("exportBtn");
+
+        const sensitivityBodyEl = document.getElementById("sensitivityBody");
+        const sensitivityNoteEl = document.getElementById("sensitivityNote");
+        const buildBodyEl = document.getElementById("buildBody");
+        const buildNoteEl = document.getElementById("buildNote");
 
         let lastResponseData = null;
         let selectedSweepRow = null;
+        let currentCandidate = null;
+        let currentCandidateLabel = "";
+
+        let sensitivityReqId = 0;
+        let sensitivityAbortController = null;
 
         function addOptions(select, map, formatter, descField = null) {
             Object.entries(map).forEach(([key, value]) => {
@@ -928,12 +983,581 @@
             collinsNoteEl.textContent = message || "No Collins/Clogston parameters yet.";
         }
 
+        function clearSensitivity(message) {
+            if (sensitivityBodyEl) sensitivityBodyEl.innerHTML = "";
+            if (sensitivityNoteEl) sensitivityNoteEl.textContent = message || "No sensitivity estimate yet.";
+        }
+
+        function clearBuildFeasibility(message) {
+            if (buildBodyEl) buildBodyEl.innerHTML = "";
+            if (buildNoteEl) buildNoteEl.textContent = message || "No build plausibility summary yet.";
+        }
+
+        function pushSensitivityRow(metric, base, cells) {
+            if (!sensitivityBodyEl) return;
+            const tr = document.createElement("tr");
+            const safeCells = Array.isArray(cells) ? cells : [];
+            tr.innerHTML = `
+                <th>${metric}</th>
+                <td>${base}</td>
+                ${safeCells.map((c) => `<td>${c}</td>`).join("")}
+            `;
+            sensitivityBodyEl.appendChild(tr);
+        }
+
+        function pushBuildRow(label, value) {
+            if (!buildBodyEl) return;
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<th>${label}</th><td>${value}</td>`;
+            buildBodyEl.appendChild(tr);
+        }
+
+        function payloadFromResponseInputs(inp) {
+            const p = {};
+            if (!inp) return p;
+            if (Number.isFinite(Number(inp.freq_GHz))) p.freq = Number(inp.freq_GHz);
+            if (Number.isFinite(Number(inp.power_kW))) p.power = Number(inp.power_kW);
+            if (inp.type) p.type = inp.type;
+            if (inp.cathode) p.cath = inp.cathode;
+            if (Number.isFinite(Number(inp.eta_pct))) p.eta = Number(inp.eta_pct);
+            if (Number.isFinite(Number(inp.zdc_kohm))) p.zdc = Number(inp.zdc_kohm);
+            if (Number.isFinite(Number(inp.etac_pct))) p.etac = Number(inp.etac_pct);
+            if (Number.isFinite(Number(inp.rp))) p.rp = Number(inp.rp);
+            if (Number.isFinite(Number(inp.fill))) p.fill = Number(inp.fill);
+            if (Number.isFinite(Number(inp.la_ratio))) p.la_ratio = Number(inp.la_ratio);
+            if (Number.isFinite(Number(inp.duty_cycle))) p.duty = Number(inp.duty_cycle);
+            return p;
+        }
+
+        async function calculateWithPayload(payload, signal) {
+            const res = await fetch("/calculate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                signal,
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                const msg = data && data.error ? data.error : `Request failed (${res.status})`;
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        function findSweepRowByNv(data, Nv) {
+            const rows = data && data.vane_sweep;
+            if (!rows || !Array.isArray(rows)) return null;
+            const match = rows.find((r) => Number(r.Nv) === Number(Nv));
+            return match || null;
+        }
+
+        function fmtDeltaPct(base, v) {
+            const b = Number(base);
+            const x = Number(v);
+            if (!Number.isFinite(b) || b === 0 || !Number.isFinite(x)) return "-";
+            const dp = ((x - b) / b) * 100.0;
+            const sign = dp >= 0 ? "+" : "";
+            return `${sign}${fmtNum(dp, 2)}%`;
+        }
+
+        async function renderSensitivity(data, rec, modeLabel) {
+            if (!sensitivityBodyEl || !sensitivityNoteEl) return;
+            if (!data || !data.inputs || !rec) {
+                clearSensitivity("No candidate available yet.");
+                return;
+            }
+            if (!rec.ok) {
+                clearSensitivity("N/A for invalid-geometry sweep rows.");
+                return;
+            }
+
+            // Cancel previous sensitivity request if still running.
+            if (sensitivityAbortController) {
+                try { sensitivityAbortController.abort(); } catch { /* ignore */ }
+            }
+            sensitivityAbortController = new AbortController();
+            const myReq = ++sensitivityReqId;
+
+            const Nv = Number(rec.Nv);
+            const basePayload = payloadFromResponseInputs(data.inputs);
+            const f0 = Number(basePayload.freq);
+
+            if (!Number.isFinite(f0) || !Number.isFinite(Nv)) {
+                clearSensitivity("No sensitivity estimate available.");
+                return;
+            }
+
+            sensitivityBodyEl.innerHTML = "";
+            const delta = 0.01;
+            const perturbations = [
+                { key: "freq", label: "f", field: "freq" },
+                { key: "power", label: "P", field: "power" },
+                { key: "zdc", label: "Zdc", field: "zdc" },
+                { key: "eta", label: "η", field: "eta" },
+                { key: "etac", label: "ηC", field: "etac" },
+            ];
+
+            const metrics = [
+                { key: "ra_mm", label: "Anode radius ra (mm)", digits: 3 },
+                { key: "rc_mm", label: "Cathode radius rc (mm)", digits: 3 },
+                { key: "pitch_mm", label: "Vane pitch (mm)", digits: 3 },
+                { key: "w_gap_mm", label: "Gap width w (mm)", digits: 3 },
+                { key: "Bz_mT", label: "Axial field Bz (mT)", digits: 2 },
+                { key: "mode_sep_pct", label: "Mode separation (%, π−1)", digits: 2 },
+                { key: "vane_tip_temp_C", label: "Vane-tip temperature (°C)", digits: 0 },
+            ];
+
+            sensitivityNoteEl.textContent = `${modeLabel || "Sensitivity"} Computing fixed-Nv perturbations (all ±1%). Cells show value and (Δ% vs base); infeasible cases show N/A/ERR.`;
+
+            // Fire all perturbation requests in parallel: 5 perturbations × (−,+) = 10 calls.
+            const reqs = [];
+            perturbations.forEach((pert) => {
+                const baseVal = Number(basePayload[pert.field]);
+                const vMinus = (Number.isFinite(baseVal) ? baseVal * (1.0 - delta) : NaN);
+                const vPlus = (Number.isFinite(baseVal) ? baseVal * (1.0 + delta) : NaN);
+                const payloadMinus = { ...basePayload, [pert.field]: vMinus };
+                const payloadPlus = { ...basePayload, [pert.field]: vPlus };
+                reqs.push({ pert, sign: "-", v: vMinus, promise: calculateWithPayload(payloadMinus, sensitivityAbortController.signal) });
+                reqs.push({ pert, sign: "+", v: vPlus, promise: calculateWithPayload(payloadPlus, sensitivityAbortController.signal) });
+            });
+
+            const settled = await Promise.allSettled(reqs.map((r) => r.promise));
+            if (myReq !== sensitivityReqId) return;
+
+            const byKey = {};
+            reqs.forEach((r, i) => {
+                const key = r.pert.key;
+                if (!byKey[key]) byKey[key] = { pert: r.pert, minus: null, plus: null, minusOk: false, plusOk: false, minusErr: null, plusErr: null };
+                const bucket = byKey[key];
+                const s = settled[i];
+                if (r.sign === "-") {
+                    if (s.status === "fulfilled") {
+                        const row = findSweepRowByNv(s.value, Nv);
+                        bucket.minus = row;
+                        bucket.minusOk = !!(row && row.ok);
+                    } else {
+                        bucket.minusErr = s.reason && s.reason.message ? s.reason.message : "Request error";
+                    }
+                } else {
+                    if (s.status === "fulfilled") {
+                        const row = findSweepRowByNv(s.value, Nv);
+                        bucket.plus = row;
+                        bucket.plusOk = !!(row && row.ok);
+                    } else {
+                        bucket.plusErr = s.reason && s.reason.message ? s.reason.message : "Request error";
+                    }
+                }
+            });
+
+            const fmtCell = (base, value, digits) => {
+                const b = Number(base);
+                const v = Number(value);
+                if (!Number.isFinite(v)) return "-";
+                const valStr = fmtNum(v, digits);
+                const dp = fmtDeltaPct(b, v);
+                return (dp === "-") ? valStr : `${valStr} (${dp})`;
+            };
+
+            // Metric rows.
+            for (const m of metrics) {
+                const baseVal = Number(rec[m.key]);
+                const baseStr = Number.isFinite(baseVal) ? fmtNum(baseVal, m.digits) : "-";
+                const rowCells = perturbations.flatMap((p) => {
+                    const b = byKey[p.key];
+                    const minusCell = (b && b.minusOk) ? fmtCell(baseVal, b.minus[m.key], m.digits) : "N/A";
+                    const plusCell = (b && b.plusOk) ? fmtCell(baseVal, b.plus[m.key], m.digits) : "N/A";
+                    return [minusCell, plusCell];
+                });
+                pushSensitivityRow(m.label, baseStr, rowCells);
+            }
+
+            sensitivityNoteEl.textContent = `${modeLabel || "Sensitivity"} Done. All perturbations use ±1% and keep Nv fixed; cells show value and (Δ% vs base).`;
+        }
+
+        function renderBuildPlausibility(data, rec, modeLabel) {
+            if (!buildBodyEl || !buildNoteEl) return;
+            if (!data || !data.inputs || !data.dc_operating_point || !rec) {
+                clearBuildFeasibility("No candidate available yet.");
+                return;
+            }
+
+            buildBodyEl.innerHTML = "";
+
+            const inp = data.inputs || {};
+            const dc = data.dc_operating_point || {};
+            const duty = Number.isFinite(Number(inp.duty_cycle)) ? Number(inp.duty_cycle) : 1.0;
+            const Bz = Number(rec.Bz_mT);
+            const Tv = Number(rec.vane_tip_temp_C);
+
+            const Prf_kW = Number(inp.power_kW);
+            const Pdc_kW = Number(dc.Pdc_kW);
+            const Ploss_kW = (Number.isFinite(Pdc_kW) && Number.isFinite(Prf_kW)) ? (Pdc_kW - Prf_kW) : NaN;
+            const PlossAvg_kW = Number.isFinite(Ploss_kW) ? (Ploss_kW * duty) : NaN;
+
+            // Magnet plausibility (very rough heuristic — depends strongly on gap + yoke).
+            let magLevel = "N/A";
+            let magMsg = "N/A";
+            if (rec.ok && Number.isFinite(Bz)) {
+                if (Bz <= 250) {
+                    magLevel = "LIKELY";
+                    magMsg = `Bz ≈ ${fmtNum(Bz, 1)} mT — typically plausible with permanent magnets and a decent yoke.`;
+                } else if (Bz <= 450) {
+                    magLevel = "POSSIBLE";
+                    magMsg = `Bz ≈ ${fmtNum(Bz, 1)} mT — possible but may require high-grade NdFeB and careful magnetic circuit design.`;
+                } else {
+                    magLevel = "HARD";
+                    magMsg = `Bz ≈ ${fmtNum(Bz, 1)} mT — challenging for permanent magnets; electromagnet or very optimized circuit may be needed.`;
+                }
+            }
+
+            // Cooling plausibility based on Tv estimate + average loss.
+            let coolLevel = "N/A";
+            let coolMsg = "N/A";
+            if (rec.ok && Number.isFinite(Tv)) {
+                if (Tv <= 500) {
+                    coolLevel = "OK";
+                    coolMsg = `Tv ≈ ${fmtNum(Tv, 0)}°C — simple cooling assumptions look plausible.`;
+                } else if (Tv <= 700) {
+                    coolLevel = "MARGINAL";
+                    coolMsg = `Tv ≈ ${fmtNum(Tv, 0)}°C — cooling/thermal path likely needs attention.`;
+                } else {
+                    coolLevel = "NOT OK";
+                    coolMsg = `Tv ≈ ${fmtNum(Tv, 0)}°C — thermal design likely infeasible without major changes.`;
+                }
+            }
+
+            pushBuildRow("Permanent magnet field", `${magLevel} — ${magMsg}`);
+            pushBuildRow("Cooling", `${coolLevel} — ${coolMsg}`);
+            pushBuildRow("Total DC power needed", Number.isFinite(Pdc_kW) ? `${fmtNum(Pdc_kW, 3)} kW` : "-");
+            pushBuildRow(
+                "Anode loss",
+                (Number.isFinite(Ploss_kW) && Number.isFinite(PlossAvg_kW))
+                    ? `P_loss,pk ≈ ${fmtNum(Ploss_kW, 3)} kW;  P_loss,avg ≈ ${fmtNum(PlossAvg_kW, 3)} kW (D=${fmtNum(duty, 4)})`
+                    : "-"
+            );
+
+            buildNoteEl.textContent = `${modeLabel || "Build plausibility"} First-order checks for build intuition (not a detailed magnetic/thermal design).`;
+        }
+
+        function downloadJson(obj, filename) {
+            const text = JSON.stringify(obj, null, 2);
+            const blob = new Blob([text], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 500);
+        }
+
+        function getConstraintsEls() {
+            // Footer is declared after this <script>, so query lazily.
+            return {
+                list: document.getElementById("constraintsList"),
+                note: document.getElementById("constraintsNote"),
+            };
+        }
+
+        function clearConstraints(message) {
+            const { list, note } = getConstraintsEls();
+            if (list) list.innerHTML = "";
+            if (note) note.textContent = message || "No constraints evaluated yet.";
+        }
+
+        function issueSuggestion(message) {
+            const msg = String(message || "");
+
+            if (msg.includes("mode sep") || msg.includes("π−1 mode")) {
+                return "Try: increase mode separation by changing Nv, increasing Bz (higher r), or using a more stable type (e.g. strapped/rising-sun); avoid operating too close to the π−1 threshold.";
+            }
+            if (msg.startsWith("Jc") || msg.includes("near limit") || msg.includes("> limit")) {
+                return "Try: reduce cathode loading by lowering Ia (increase η or increase Zdc), increasing cathode area (increase La/λ or choose a larger rc via different Nv), choosing a higher-emission cathode, or reducing power.";
+            }
+            if (msg.includes("ωc/ωs") && msg.includes("< 3")) {
+                return "Try: increase Bz (higher r) or increase Nv (reduces ωs) to bring ωc/ωs back into a typical range.";
+            }
+            if (msg.includes("ωc/ωs") && msg.includes("> 15")) {
+                return "Try: reduce Bz (lower r) or decrease Nv (raises ωs) to avoid excessive magnetic field requirements.";
+            }
+            if (msg.includes("Va/VH >")) {
+                return "Try: increase r (raise Bz) to move away from cut-off, or revisit Zdc/η assumptions to reduce the required Va.";
+            }
+            if (msg.includes("Va/VH <")) {
+                return "Try: reduce r (lower Bz) or revisit geometry/type assumptions; very low Va/VH is atypical and can indicate an off-design operating point.";
+            }
+            if (msg.includes("Kilpatrick")) {
+                return "Try: reduce peak electric fields by lowering Va (increase η or reduce required Pdc), increasing gap dimensions (larger rc/ra or larger w_gap), or reducing frequency/power.";
+            }
+            if (msg.includes("Vane tip T")) {
+                return "Try: reduce average dissipation (lower duty or power, or increase η), increase heat-flow area (increase La/λ), or improve cooling assumptions (lower T_cool / better thermal path).";
+            }
+            if (msg.includes("Nv divisible by 4")) {
+                return "Try: choose an Nv that is not divisible by 4 (adjust sweep selection).";
+            }
+            if (msg.includes("cyclotron resonance") || msg.includes("ωc/ω")) {
+                return "Try: move Bz away from cyclotron resonance (adjust r/Bz) or adjust Nv/frequency so ωc and ω are not close.";
+            }
+            if (msg.includes("Denominator") || msg.includes("Geometry")) {
+                return "Try: choose a different Nv or adjust rp/fill to keep the geometry equations well-conditioned.";
+            }
+
+            return "Try: adjust Nv/type, revisit η and Zdc assumptions, or change duty/power to move back into typical operating ranges.";
+        }
+
+        function suggestionForConstraint(key) {
+            switch (String(key || "")) {
+                case "geometry":
+                    return "Try: pick a different Nv sweep row, adjust rp/fill, or change type to find a feasible geometry.";
+                case "mode_sep":
+                    return "Try: change Nv (select a different sweep row), adjust rp/fill, or change type/frequency to increase π−1 mode separation.";
+                case "jc":
+                    return "Try: increase η, increase Zdc, increase La/λ, reduce power, reduce duty, or choose a higher-emission cathode to reduce Jc.";
+                case "wcws_low":
+                    return "Try: increase ωc/ωs by changing Nv (affects ωs) or selecting a type/η/ηC combination that increases r (thus Bz).";
+                case "wcws_high":
+                    return "Try: reduce ωc/ωs by changing Nv (affects ωs) or selecting a type/η/ηC combination that reduces r (thus Bz).";
+                case "vavh":
+                    return "Try: change η or Zdc to shift Va and Va/VH, or select a different Nv/type so the operating point is farther from cut-off.";
+                case "kilpatrick_ak":
+                case "kilpatrick_vane":
+                    return "Try: reduce required Va (increase η, reduce power, or reduce Zdc), or increase gaps/geometry scale by changing Nv/type/frequency.";
+                case "tv":
+                    return "Try: reduce duty or power, increase η, increase La/λ, or improve cooling/thermal path assumptions.";
+                case "nv_div4":
+                    return "Try: select an Nv that is not divisible by 4 (choose a different sweep row) or change type.";
+                case "cyclotron":
+                    return "Try: move away from resonance by selecting a different Nv/type or changing η/ηC assumptions (shifts r and Bz).";
+                default:
+                    return "Try: adjust Nv/type and revisit η/Zdc/duty/power assumptions.";
+            }
+        }
+
+        function worstLevelFromIssues(issues) {
+            if (!issues || !Array.isArray(issues) || issues.length === 0) return "ok";
+            if (issues.some((x) => x.level === "fatal")) return "fatal";
+            if (issues.some((x) => x.level === "warn")) return "warn";
+            return "ok";
+        }
+
+        function pushConstraintItem(level, title, detail, suggestion) {
+            const { list } = getConstraintsEls();
+            if (!list) return;
+            const li = document.createElement("li");
+            const lvl = (level === "fatal" || level === "warn" || level === "ok" || level === "na") ? level : "warn";
+            const chipText = (lvl === "fatal") ? "FAIL" : (lvl === "warn") ? "WARN" : (lvl === "ok") ? "OK" : "N/A";
+            const safeTitle = title || "Constraint";
+            const safeDetail = detail || "";
+            const safeSugg = suggestion || "";
+            li.innerHTML = `
+                <span class="chip ${lvl}">${chipText}</span>
+                <strong>${safeTitle}</strong>${safeDetail ? ` — ${safeDetail}` : ""}
+                ${safeSugg ? `<div class="sources-note" style="border-top: none; padding-top: 6px;">${safeSugg}</div>` : ""}
+            `;
+            list.appendChild(li);
+        }
+
+        function renderConstraintsDashboard(data, rec, modeLabel) {
+            const { list, note } = getConstraintsEls();
+            if (!list || !note) return;
+
+            if (!rec) {
+                clearConstraints("No candidate available yet.");
+                return;
+            }
+
+            list.innerHTML = "";
+
+            const inputs = data && data.inputs ? data.inputs : {};
+            const dc = data && data.dc_operating_point ? data.dc_operating_point : {};
+            const typeId = String(inputs.type || "");
+            const isCW = String(inputs.duty || "") === "cw";
+            const fGHz = Number(inputs.freq_GHz);
+
+            // 1) Handle invalid geometry rows from the sweep.
+            if (rec.ok === false) {
+                pushConstraintItem("fatal", "Geometry feasibility", rec.message || "No valid solution for this Nv", suggestionForConstraint("geometry"));
+                // Show the rest as N/A so the dashboard is a complete checklist.
+                pushConstraintItem("na", "π−1 mode separation", "N/A (invalid geometry)", suggestionForConstraint("mode_sep"));
+                pushConstraintItem("na", "Cathode loading Jc/Jlim", "N/A (invalid geometry)", suggestionForConstraint("jc"));
+                pushConstraintItem("na", "Cyclotron ratio ωc/ωs", "N/A (invalid geometry)", "");
+                pushConstraintItem("na", "Operating ratio Va/VH", "N/A (no operating point)", suggestionForConstraint("vavh"));
+                pushConstraintItem("na", "Kilpatrick (anode–cathode field)", "N/A (invalid geometry)", suggestionForConstraint("kilpatrick_ak"));
+                pushConstraintItem("na", "Kilpatrick (vane-gap field)", "N/A (invalid geometry)", suggestionForConstraint("kilpatrick_vane"));
+                pushConstraintItem("na", "Vane-tip temperature", "N/A (invalid geometry)", suggestionForConstraint("tv"));
+                pushConstraintItem("na", "Rising-sun Nv rule", "N/A", suggestionForConstraint("nv_div4"));
+                pushConstraintItem("na", "Rising-sun cyclotron resonance", "N/A", suggestionForConstraint("cyclotron"));
+                note.textContent = `${modeLabel || "Constraints"} Fails present.`;
+                return;
+            }
+
+            // Always include geometry as an explicit checklist item.
+            pushConstraintItem("ok", "Geometry feasibility", "Feasible", "");
+
+            // π−1 mode separation
+            const msep = Number(rec.mode_sep_pct);
+            if (!Number.isFinite(msep)) {
+                pushConstraintItem("na", "π−1 mode separation", "N/A", suggestionForConstraint("mode_sep"));
+            } else if (msep < 0) {
+                pushConstraintItem("fatal", "π−1 mode separation", `sep = ${fmtNum(msep, 1)}% (π−1 threshold below Va)`, suggestionForConstraint("mode_sep"));
+            } else if (msep < 8) {
+                pushConstraintItem("warn", "π−1 mode separation", `sep = ${fmtNum(msep, 1)}% (low; typical design prefers higher)`, suggestionForConstraint("mode_sep"));
+            } else {
+                pushConstraintItem("ok", "π−1 mode separation", `sep = ${fmtNum(msep, 1)}%`, "");
+            }
+
+            // Cathode loading Jc/Jlim
+            const Jc = Number(rec.Jc_A_per_cm2);
+            const Jlim = Number(rec.Jlim_A_per_cm2);
+            if (!Number.isFinite(Jc) || !Number.isFinite(Jlim) || Jlim <= 0) {
+                pushConstraintItem("na", "Cathode loading Jc/Jlim", "N/A", suggestionForConstraint("jc"));
+            } else {
+                const ratio = Jc / Jlim;
+                const detail = `Jc/Jlim = ${fmtNum(ratio, 2)} (${fmtNum(Jc, 2)} / ${fmtNum(Jlim, 2)} A/cm²)`;
+                if (Jc > 1.05 * Jlim) {
+                    pushConstraintItem("fatal", "Cathode loading Jc/Jlim", detail, suggestionForConstraint("jc"));
+                } else if (Jc > 0.78 * Jlim) {
+                    pushConstraintItem("warn", "Cathode loading Jc/Jlim", detail, suggestionForConstraint("jc"));
+                } else {
+                    pushConstraintItem("ok", "Cathode loading Jc/Jlim", detail, "");
+                }
+            }
+
+            // Cyclotron ratio ωc/ωs
+            // Replicates backend heuristic checks using ωs=2πf/(Nv/2), ωc=(e/m)Bz.
+            const Nv = Number(rec.Nv);
+            const Bz_mT = Number(rec.Bz_mT);
+            let wcws = NaN;
+            if (Number.isFinite(fGHz) && Number.isFinite(Nv) && Nv > 0 && Number.isFinite(Bz_mT)) {
+                const n = Nv / 2.0;
+                const fHz = fGHz * 1e9;
+                const ws = 2 * Math.PI * fHz / Math.max(1, n);
+                const EOM = 1.75882001076e11; // C/kg
+                const Bz_T = Bz_mT * 1e-3;
+                wcws = (EOM * Bz_T) / ws;
+            }
+            if (!Number.isFinite(wcws)) {
+                pushConstraintItem("na", "Cyclotron ratio ωc/ωs", "N/A", "");
+            } else {
+                const detail = `ωc/ωs = ${fmtNum(wcws, 2)} (heuristic: ~3–15)`;
+                if (typeId === "rs" && Math.abs(wcws - 1) < 0.28) {
+                    pushConstraintItem("fatal", "Rising-sun cyclotron resonance", `ωc/ωs ≈ 1 (${fmtNum(wcws, 2)})`, suggestionForConstraint("cyclotron"));
+                } else {
+                    if (wcws < 2.8) {
+                        pushConstraintItem("warn", "Cyclotron ratio ωc/ωs", detail, suggestionForConstraint("wcws_low"));
+                    } else if (wcws > 15) {
+                        pushConstraintItem("warn", "Cyclotron ratio ωc/ωs", detail, suggestionForConstraint("wcws_high"));
+                    } else {
+                        pushConstraintItem("ok", "Cyclotron ratio ωc/ωs", detail, "");
+                    }
+                }
+            }
+
+            // Va/VH operating ratio
+            const VaVH = Number(dc.Va_over_VH);
+            if (!Number.isFinite(VaVH)) {
+                pushConstraintItem("na", "Operating ratio Va/VH", "N/A", suggestionForConstraint("vavh"));
+            } else {
+                const detail = `Va/VH = ${fmtNum(VaVH, 3)} (typical: 0.50–0.90)`;
+                if (VaVH > 0.92) {
+                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — near cut-off`, suggestionForConstraint("vavh"));
+                } else if (VaVH < 0.18) {
+                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — very low`, suggestionForConstraint("vavh"));
+                } else if (VaVH < 0.50 || VaVH > 0.90) {
+                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — outside typical range`, suggestionForConstraint("vavh"));
+                } else {
+                    pushConstraintItem("ok", "Operating ratio Va/VH", detail, "");
+                }
+            }
+
+            // Kilpatrick: E_ak / E_kp
+            const E_kp = Number(rec.E_kp_MVm);
+            const E_ak = Number(rec.E_ak_peak_MVm);
+            if (!Number.isFinite(E_kp) || E_kp <= 0 || !Number.isFinite(E_ak)) {
+                pushConstraintItem("na", "Kilpatrick (anode–cathode field)", "N/A", suggestionForConstraint("kilpatrick_ak"));
+            } else {
+                const ratio = E_ak / E_kp;
+                const detail = `E_ak/E_kp = ${fmtNum(ratio, 2)} (E_ak=${fmtNum(E_ak, 1)} MV/m; E_kp=${fmtNum(E_kp, 1)} MV/m)`;
+                if (ratio > 1.20) {
+                    pushConstraintItem("fatal", "Kilpatrick (anode–cathode field)", detail, suggestionForConstraint("kilpatrick_ak"));
+                } else if (ratio > 1.00) {
+                    pushConstraintItem("warn", "Kilpatrick (anode–cathode field)", detail, suggestionForConstraint("kilpatrick_ak"));
+                } else {
+                    pushConstraintItem("ok", "Kilpatrick (anode–cathode field)", detail, "");
+                }
+            }
+
+            // Kilpatrick: E_vane / E_kp
+            const E_vane = Number(rec.E_vane_gap_MVm);
+            if (!Number.isFinite(E_kp) || E_kp <= 0 || !Number.isFinite(E_vane)) {
+                pushConstraintItem("na", "Kilpatrick (vane-gap field)", "N/A", suggestionForConstraint("kilpatrick_vane"));
+            } else {
+                const ratio = E_vane / E_kp;
+                const detail = `E_vane/E_kp = ${fmtNum(ratio, 2)} (E_vane≈${fmtNum(E_vane, 1)} MV/m; E_kp=${fmtNum(E_kp, 1)} MV/m)`;
+                if (ratio > 1.20) {
+                    pushConstraintItem("fatal", "Kilpatrick (vane-gap field)", detail, suggestionForConstraint("kilpatrick_vane"));
+                } else if (ratio > 1.00) {
+                    pushConstraintItem("warn", "Kilpatrick (vane-gap field)", detail, suggestionForConstraint("kilpatrick_vane"));
+                } else {
+                    pushConstraintItem("ok", "Kilpatrick (vane-gap field)", detail, "");
+                }
+            }
+
+            // Vane tip temperature
+            const Tv = Number(rec.vane_tip_temp_C);
+            if (!Number.isFinite(Tv)) {
+                pushConstraintItem("na", "Vane-tip temperature", "N/A", suggestionForConstraint("tv"));
+            } else if (Tv > 700) {
+                pushConstraintItem("fatal", "Vane-tip temperature", `Tv ≈ ${fmtNum(Tv, 0)}°C (limit: 700°C)`, suggestionForConstraint("tv"));
+            } else if (Tv > 500) {
+                pushConstraintItem("warn", "Vane-tip temperature", `Tv ≈ ${fmtNum(Tv, 0)}°C (warn: 500°C)`, suggestionForConstraint("tv"));
+            } else {
+                pushConstraintItem("ok", "Vane-tip temperature", `Tv ≈ ${fmtNum(Tv, 0)}°C`, "");
+            }
+
+            // Rising-sun Nv divisible-by-4 rule
+            if (typeId === "rs" && Number.isFinite(Nv) && Nv > 0) {
+                if (Nv % 4 === 0) {
+                    pushConstraintItem("warn", "Rising-sun Nv rule", `Nv = ${Nv} is divisible by 4 (avoid)`, suggestionForConstraint("nv_div4"));
+                } else {
+                    pushConstraintItem("ok", "Rising-sun Nv rule", `Nv = ${Nv} (OK)`, "");
+                }
+            } else {
+                pushConstraintItem("na", "Rising-sun Nv rule", "N/A (not a rising-sun type)", "");
+            }
+
+            // Summary line
+            const items = Array.from(list.querySelectorAll(".chip"));
+            const counts = { ok: 0, warn: 0, fatal: 0, na: 0 };
+            items.forEach((el) => {
+                if (el.classList.contains("fatal")) counts.fatal++;
+                else if (el.classList.contains("warn")) counts.warn++;
+                else if (el.classList.contains("ok")) counts.ok++;
+                else if (el.classList.contains("na")) counts.na++;
+            });
+            const worst = (counts.fatal > 0) ? "fatal" : (counts.warn > 0) ? "warn" : "ok";
+            const suffix = `OK ${counts.ok} · WARN ${counts.warn} · FAIL ${counts.fatal} · N/A ${counts.na}`;
+            const heading = modeLabel || "Constraints";
+            const statusTail = (worst === "ok") ? "All OK." : (worst === "warn") ? "Warnings present." : "Fails present.";
+            note.textContent = `${heading} ${statusTail} (${suffix})`;
+        }
+
         function fmtRange(r, digits = 3) {
             if (!r) return "-";
             const p10 = Number(r.p10);
             const p90 = Number(r.p90);
             if (!Number.isFinite(p10) || !Number.isFinite(p90)) return "-";
             return `${fmtNum(p10, digits)}–${fmtNum(p90, digits)}`;
+        }
+
+        function insideOutsideTypical(r, value) {
+            const v = Number(value);
+            if (!Number.isFinite(v) || !r) return "-";
+            const p10 = Number(r.p10);
+            const p90 = Number(r.p90);
+            if (!Number.isFinite(p10) || !Number.isFinite(p90)) return "-";
+            return (v >= p10 && v <= p90) ? "Inside" : "Outside";
         }
 
         function renderDimensionlessPanels(data, rec, modeLabel) {
@@ -961,10 +1585,12 @@
                 const finite = Number.isFinite(item.value);
                 const val = finite ? fmtNum(item.value, item.digits || 3) : "-";
                 const rng = fmtRange(collinsRanges[item.key], item.rangeDigits || item.digits || 3);
+                const inOut = insideOutsideTypical(collinsRanges[item.key], item.value);
                 tr.innerHTML = `
                     <td>${item.name}</td>
                     <td>${val}</td>
                     <td>${rng}</td>
+                    <td>${inOut}</td>
                 `;
                 collinsBodyEl.appendChild(tr);
             });
@@ -1576,11 +2202,16 @@
             const rows = data.vane_sweep;
             if (!rows || !Array.isArray(rows) || rows.length === 0) {
                 clearSweep("No sweep data returned.");
-                return;
+                return false;
             }
 
             const bestNv = data.recommended ? data.recommended.Nv : null;
             clearSweep("");
+
+            let bestTr = null;
+            let bestRow = null;
+            let firstValidTr = null;
+            let firstValidRow = null;
 
             rows.forEach((row) => {
                 const tr = document.createElement("tr");
@@ -1636,11 +2267,30 @@
                 });
                 
                 sweepBodyEl.appendChild(tr);
+
+                if (!firstValidTr && row.ok) {
+                    firstValidTr = tr;
+                    firstValidRow = row;
+                }
+                if (isBest) {
+                    bestTr = tr;
+                    bestRow = row;
+                }
             });
 
             sweepNoteEl.textContent = bestNv === null
                 ? "Sweep completed; no recommended non-fatal candidate found. Click a row to inspect."
                 : `Sweep completed. Recommended candidate is marked with * (Nv=${bestNv}). Click any row to inspect.`;
+
+            // Auto-select the recommended (or first valid) row so downstream panels populate immediately.
+            const autoTr = bestTr || firstValidTr;
+            const autoRow = bestRow || firstValidRow;
+            if (autoTr && autoRow) {
+                selectSweepRow(autoTr, autoRow, data);
+                return true;
+            }
+
+            return false;
         }
 
         function selectSweepRow(trElement, rowData, fullData) {
@@ -1669,9 +2319,14 @@
 
             renderSummaryCards(modifiedData, rowData, "Summary from selected vane-count candidate.");
             renderDimensionlessPanels(modifiedData, rowData, "Assessment based on selected sweep row");
+            renderConstraintsDashboard(modifiedData, rowData, "Constraints based on selected sweep row.");
             drawDcGraph(modifiedData);
             renderGeometryForRow(rowData);
             drawGeometrySketch(modifiedData);
+            currentCandidate = rowData;
+            currentCandidateLabel = "Selected sweep row";
+            renderSensitivity(modifiedData, rowData, "Sensitivity based on selected sweep row.");
+            renderBuildPlausibility(modifiedData, rowData, "Build plausibility based on selected sweep row.");
         }
 
         function renderGeometryForRow(rec) {
@@ -1706,12 +2361,23 @@
         function renderSummary(data) {
             lastResponseData = data;
             const rec = data.recommended || null;
+            const didAutoSelect = renderSweep(data);
+            if (didAutoSelect) {
+                return;
+            }
+
+            // Fallback: no valid sweep row to auto-select, so render based on backend recommendation.
             renderSummaryCards(data, rec, "Summary from recommended non-fatal design candidate.");
             renderDimensionlessPanels(data, rec, "Assessment based on recommended candidate");
+            renderConstraintsDashboard(data, rec, "Constraints based on recommended candidate.");
             drawDcGraph(data);
             renderGeometry(data);
             drawGeometrySketch(data);
-            renderSweep(data);
+
+            currentCandidate = rec;
+            currentCandidateLabel = "Recommended candidate";
+            renderSensitivity(data, rec, "Sensitivity based on recommended candidate.");
+            renderBuildPlausibility(data, rec, "Build plausibility based on recommended candidate.");
         }
 
         form.addEventListener("submit", async (ev) => {
@@ -1732,6 +2398,9 @@
                 } else {
                     clearSummary("Summary unavailable due to request error.");
                     clearParams("Parameter assessment unavailable due to request error.");
+                    clearConstraints("Constraints unavailable due to request error.");
+                    clearSensitivity("Sensitivity unavailable due to request error.");
+                    clearBuildFeasibility("Build plausibility unavailable due to request error.");
                     clearDcGraph("DC graph unavailable due to request error.");
                     clearGeometry("Geometry unavailable due to request error.");
                     clearGeometrySketch("Geometry sketch unavailable due to request error.");
@@ -1742,6 +2411,9 @@
                 setStatus("Request error. Check server console.", "err");
                 clearSummary("Summary unavailable due to network error.");
                 clearParams("Parameter assessment unavailable due to network error.");
+                clearConstraints("Constraints unavailable due to network error.");
+                clearSensitivity("Sensitivity unavailable due to network error.");
+                clearBuildFeasibility("Build plausibility unavailable due to network error.");
                 clearDcGraph("DC graph unavailable due to network error.");
                 clearGeometry("Geometry unavailable due to network error.");
                 clearGeometrySketch("Geometry sketch unavailable due to network error.");
@@ -1761,11 +2433,41 @@
             }
             clearSummary("Form cleared.");
             clearParams("Form cleared.");
+            clearConstraints("Form cleared.");
+            clearSensitivity("Form cleared.");
+            clearBuildFeasibility("Form cleared.");
             clearDcGraph("Form cleared.");
             clearGeometry("Form cleared.");
             clearGeometrySketch("Form cleared.");
             clearSweep("Form cleared.");
             setStatus("Form cleared.", "");
+        });
+
+        exportBtn.addEventListener("click", () => {
+            if (!lastResponseData || !lastResponseData.inputs || !lastResponseData.dc_operating_point) {
+                setStatus("Nothing to export yet. Run Calculate first.", "err");
+                return;
+            }
+            const rec = currentCandidate;
+            if (!rec) {
+                setStatus("No candidate selected to export.", "err");
+                return;
+            }
+
+            const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+            const nv = (rec && rec.Nv !== undefined && rec.Nv !== null) ? String(rec.Nv) : "Nv";
+            const f = Number(lastResponseData.inputs.freq_GHz);
+            const fname = `magnetron_design_${stamp}_${nv}_${Number.isFinite(f) ? (String(f).replace(/\./g, "p") + "GHz") : ""}.json`;
+
+            downloadJson({
+                exported_at_utc: new Date().toISOString(),
+                exported_candidate_label: currentCandidateLabel || "Candidate",
+                inputs: lastResponseData.inputs,
+                dc_operating_point: lastResponseData.dc_operating_point,
+                candidate: rec,
+            }, fname);
+
+            setStatus(`Exported ${currentCandidateLabel || "candidate"} as JSON.`, "ok");
         });
 
         function applyPresetToForm(presetKey) {
@@ -1847,8 +2549,9 @@
             updateEtaZdc();
             updateLaRatioAutofill(false);
         });
-        form.freq.addEventListener("change", updateEtaZdc);
-        form.duty.addEventListener("change", updateEtaZdc);
+        // Note: we intentionally do NOT auto-update eta/zdc when frequency or duty changes.
+        // Those fields are user inputs/overrides; only selecting a magnetron type should
+        // auto-fill defaults.
 
         // Ensure la_ratio has a sensible default on initial load.
         updateLaRatioAutofill(false);
@@ -1870,6 +2573,9 @@
         });
 
         clearParams("No parameter assessment available yet.");
+        clearConstraints("No constraints evaluated yet.");
+        clearSensitivity("No sensitivity estimate yet.");
+        clearBuildFeasibility("No build plausibility summary yet.");
         clearDcGraph("No DC operating point available yet.");
         clearGeometrySketch("No geometry sketch available yet.");
 
@@ -1893,6 +2599,28 @@
 
     <footer class="sources-footer">
         <hr />
+        <details>
+            <summary>Constraints dashboard</summary>
+            <div>
+                <div id="constraintsNote" class="sources-note" style="border-top: none; padding-top: 0;">No constraints evaluated yet.</div>
+                <ul id="constraintsList" class="sources-list"></ul>
+            </div>
+        </details>
+        <details>
+            <summary>Assumptions</summary>
+            <div>
+                <ul class="sources-list">
+                    <li><strong>Analytic sizing model:</strong> outputs are first-pass estimates from closed-form relations (Carter/Collins/Clogston). Not a PIC simulation and not a full 3D EM/thermal/mechanical design.</li>
+                    <li><strong>Efficiency and impedance inputs:</strong> \(\eta\) and \(Z_{dc}\) are treated as operating-point assumptions/overrides; type defaults are heuristic fits and may differ from a specific tube design.</li>
+                    <li><strong>Geometry approximations:</strong> cavities are approximated with simple rectangular primitives for \(Q\) and thermal area; straps/rising-sun details and end-hats are not explicitly modeled.</li>
+                    <li><strong>Thermal estimate:</strong> vane-tip temperature uses a simplified 1D conduction model with fixed material properties and a constant coolant temperature; it’s intended as a screening check.</li>
+                    <li><strong>Breakdown check:</strong> Kilpatrick is used as a classic RF heuristic; it does not guarantee absence of breakdown in the real tube.</li>
+                    <li><strong>Magnet system:</strong> axial field \(B_z\) is treated as an available operating parameter; the permanent-magnet/electromagnet design, saturation, and field uniformity are not designed here.</li>
+                    <li><strong>Sensitivity panel:</strong> each perturbation reruns the full model with one input changed by \(\pm 1\%\) while holding \(N_v\) fixed (same sweep row is extracted at the perturbed point). If that \(N_v\) becomes infeasible, the result is shown as N/A.</li>
+                    <li><strong>Build plausibility panel:</strong> permanent-magnet plausibility uses only the required \(B_z\) magnitude (does not model magnetic circuit geometry); cooling uses the model’s \(T_v\) screening thresholds; anode loss uses \(P_{loss}=P_{dc}-P_{rf}\) (peak) and duty scaling for average loss.</li>
+                </ul>
+            </div>
+        </details>
         <details>
             <summary>Core operating-point & geometry formulas used</summary>
             <div>
@@ -1971,6 +2699,20 @@
                             <li>Average anode dissipation (duty-cycle corrected): \(P_{a,avg} \approx P_{a,peak}\,D\)</li>
                             <li>Heat-flow area: \(A_v = N_v\,t_{vane}\,L_a\)</li>
                             <li>Vane-tip temperature: \(T_v = T_{cool} + \frac{P_{a,avg}\,L_{th}}{A_v\,\kappa_{Cu}}\)</li>
+                        </ul>
+                    </li>
+                    <li><strong>UI sensitivity perturbations</strong>
+                        <ul class="sources-list">
+                            <li>For each input \(x\in\{f, P, Z_{dc}, \eta, \eta_C\}\), compute \(x_\pm = x\,(1\pm\delta)\) with \(\delta=0.01\), rerun the model, and extract the sweep row at the same \(N_v\).</li>
+                            <li>Cells report the perturbed output value and the relative deviation vs base: \(\Delta\% = 100\,(y_\pm - y_0)/y_0\).</li>
+                        </ul>
+                    </li>
+                    <li><strong>UI build plausibility (teaching heuristics)</strong>
+                        <ul class="sources-list">
+                            <li>Total DC input power needed: \(P_{dc} = P_{rf}/\eta\).</li>
+                            <li>Anode loss (peak): \(P_{loss,pk}=P_{dc}-P_{rf}\).</li>
+                            <li>Anode loss (average): \(P_{loss,avg}=D\,(P_{dc}-P_{rf})\).</li>
+                            <li>Permanent-magnet plausibility uses a simple threshold on \(B_z\) only (does not design the magnetic circuit).</li>
                         </ul>
                     </li>
                     <li><strong>\(\pi-1\) mode separation check</strong> (Carter Eq. 15.40 pattern; implemented as an \(n\to n-1\) threshold)
