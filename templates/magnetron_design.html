@@ -682,7 +682,10 @@
                         <label>Reference DB ID (load_db)
                             <input name="load_db" type="text" placeholder="mg5193" />
                         </label>
-                        <div></div>
+                        <label>Applied / Hartree Threshold Ratio Va/VT
+                            <input name="vavt" type="number" step="0.01" min="0" placeholder="auto" />
+                            <div class="help-text">Ratio of applied anode voltage to Hartree threshold voltage VT. Leave blank to use the model value (1.0); set slightly above 1.0 when running above threshold.</div>
+                        </label>
                     </div>
 
                     <div class="btns">
@@ -869,6 +872,7 @@
             cath: "magnetron_design:cath",
             eta: "magnetron_design:eta",
             zdc: "magnetron_design:zdc",
+            vavt: "magnetron_design:vavt",
         };
 
         function saveSelectToStorage(key, selectEl) {
@@ -928,11 +932,13 @@
 
         const etaRestored = restoreInputFromStorage(STORAGE_KEYS.eta, form.eta);
         const zdcRestored = restoreInputFromStorage(STORAGE_KEYS.zdc, form.zdc);
+        const vavtRestored = restoreInputFromStorage(STORAGE_KEYS.vavt, form.vavt);
 
         cathSelect.addEventListener("change", () => saveSelectToStorage(STORAGE_KEYS.cath, cathSelect));
 
         form.eta.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.eta, form.eta));
         form.zdc.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.zdc, form.zdc));
+        form.vavt.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.vavt, form.vavt));
 
         function defaultLaRatioForType(typeId) {
             return (String(typeId || "") === "la") ? 1.5 : 0.16;
@@ -1021,6 +1027,7 @@
             if (inp.cathode) p.cath = inp.cathode;
             if (Number.isFinite(Number(inp.eta_pct))) p.eta = Number(inp.eta_pct);
             if (Number.isFinite(Number(inp.zdc_kohm))) p.zdc = Number(inp.zdc_kohm);
+            if (Number.isFinite(Number(inp.va_over_vt))) p.vavt = Number(inp.va_over_vt);
             if (Number.isFinite(Number(inp.etac_pct))) p.etac = Number(inp.etac_pct);
             if (Number.isFinite(Number(inp.rp))) p.rp = Number(inp.rp);
             if (Number.isFinite(Number(inp.fill))) p.fill = Number(inp.fill);
@@ -1318,8 +1325,8 @@
                     return "Try: increase ωc/ωs by changing Nv (affects ωs) or selecting a type/η/ηC combination that increases r (thus Bz).";
                 case "wcws_high":
                     return "Try: reduce ωc/ωs by changing Nv (affects ωs) or selecting a type/η/ηC combination that reduces r (thus Bz).";
-                case "vavh":
-                    return "Try: change η or Zdc to shift Va and Va/VH, or select a different Nv/type so the operating point is farther from cut-off.";
+                case "vavt":
+                    return "Try: change Va/VT input, η, or Zdc to shift the operating point; then check the derived Va/VH stays in a typical range.";
                 case "kilpatrick_ak":
                 case "kilpatrick_vane":
                     return "Try: reduce required Va (increase η, reduce power, or reduce Zdc), or increase gaps/geometry scale by changing Nv/type/frequency.";
@@ -1382,7 +1389,7 @@
                 pushConstraintItem("na", "π−1 mode separation", "N/A (invalid geometry)", suggestionForConstraint("mode_sep"));
                 pushConstraintItem("na", "Cathode loading Jc/Jlim", "N/A (invalid geometry)", suggestionForConstraint("jc"));
                 pushConstraintItem("na", "Cyclotron ratio ωc/ωs", "N/A (invalid geometry)", "");
-                pushConstraintItem("na", "Operating ratio Va/VH", "N/A (no operating point)", suggestionForConstraint("vavh"));
+                pushConstraintItem("na", "Derived operating ratio Va/VH", "N/A (no operating point)", suggestionForConstraint("vavt"));
                 pushConstraintItem("na", "Kilpatrick (anode–cathode field)", "N/A (invalid geometry)", suggestionForConstraint("kilpatrick_ak"));
                 pushConstraintItem("na", "Kilpatrick (vane-gap field)", "N/A (invalid geometry)", suggestionForConstraint("kilpatrick_vane"));
                 pushConstraintItem("na", "Vane-tip temperature", "N/A (invalid geometry)", suggestionForConstraint("tv"));
@@ -1454,20 +1461,22 @@
                 }
             }
 
-            // Va/VH operating ratio
+            // Derived Va/VH operating ratio
             const VaVH = Number(dc.Va_over_VH);
             if (!Number.isFinite(VaVH)) {
-                pushConstraintItem("na", "Operating ratio Va/VH", "N/A", suggestionForConstraint("vavh"));
+                pushConstraintItem("na", "Derived operating ratio Va/VH", "N/A", suggestionForConstraint("vavt"));
             } else {
-                const detail = `Va/VH = ${fmtNum(VaVH, 3)} (typical: 0.50–0.90)`;
-                if (VaVH > 0.92) {
-                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — near cut-off`, suggestionForConstraint("vavh"));
+                const detail = `Va/VH = ${fmtNum(VaVH, 3)} (typical: 0.50–1.05)`;
+                if (VaVH > 1.15) {
+                    pushConstraintItem("fatal", "Derived operating ratio Va/VH", `${detail} — above typical operating range`, suggestionForConstraint("vavt"));
+                } else if (VaVH > 1.05) {
+                    pushConstraintItem("warn", "Derived operating ratio Va/VH", `${detail} — slightly above threshold`, suggestionForConstraint("vavt"));
                 } else if (VaVH < 0.18) {
-                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — very low`, suggestionForConstraint("vavh"));
-                } else if (VaVH < 0.50 || VaVH > 0.90) {
-                    pushConstraintItem("warn", "Operating ratio Va/VH", `${detail} — outside typical range`, suggestionForConstraint("vavh"));
+                    pushConstraintItem("warn", "Derived operating ratio Va/VH", `${detail} — very low`, suggestionForConstraint("vavt"));
+                } else if (VaVH < 0.50 || VaVH > 1.05) {
+                    pushConstraintItem("warn", "Derived operating ratio Va/VH", `${detail} — outside typical range`, suggestionForConstraint("vavt"));
                 } else {
-                    pushConstraintItem("ok", "Operating ratio Va/VH", detail, "");
+                    pushConstraintItem("ok", "Derived operating ratio Va/VH", detail, "");
                 }
             }
 
@@ -1610,7 +1619,14 @@
             pushSummaryItem("Power", `${fmtNum(inp.power_kW, 2)} kW`);
             pushSummaryItem("Va", `${fmtNum(dc.Va_kV, 3)} kV`);
             pushSummaryItem("Ia", `${fmtNum(dc.Ia_A, 3)} A`);
-            pushSummaryItem("Va/VH", fmtNum(dc.Va_over_VH, 3));
+            pushSummaryItem("Va/VT", fmtNum(dc.Va_over_VT, 3));
+            if (Number.isFinite(Number(dc.Va_over_VT_model)) && Math.abs(Number(dc.Va_over_VT_model) - Number(dc.Va_over_VT)) > 1e-6) {
+                pushSummaryItem("Va/VT model", fmtNum(dc.Va_over_VT_model, 3));
+            }
+            pushSummaryItem("Derived Va/VH", fmtNum(dc.Va_over_VH, 3));
+            if (Number.isFinite(Number(dc.Va_over_VH_model)) && Math.abs(Number(dc.Va_over_VH_model) - Number(dc.Va_over_VH)) > 1e-6) {
+                pushSummaryItem("Va/VH model", fmtNum(dc.Va_over_VH_model, 3));
+            }
 
             if (rec) {
                 pushSummaryItem("Selected Nv", `${rec.Nv ?? "-"}`);
@@ -2427,6 +2443,7 @@
             clearStoredSelect(STORAGE_KEYS.cath);
             clearStoredSelect(STORAGE_KEYS.eta);
             clearStoredSelect(STORAGE_KEYS.zdc);
+            clearStoredSelect(STORAGE_KEYS.vavt);
             if (selectedSweepRow) {
                 selectedSweepRow.classList.remove("selected");
                 selectedSweepRow = null;

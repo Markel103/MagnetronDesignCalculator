@@ -449,7 +449,7 @@ PRESETS = {
 
 # ─── Core design calculations ──────────────────────────────────────────────────
 
-def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
+def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct, va_over_vt=None):
     """
     Returns DC operating point or None if parameters are unphysical.
 
@@ -481,8 +481,24 @@ def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
     if not (1.3 < r < 35):
         return None
 
-    V0  = Va / (2 * r - 1)         # characteristic voltage (V)  eq.15.22
-    VH  = r * r * V0               # Hull cut-off voltage (V)
+    # Use the Hartree threshold ratio Va/VT as the external operating-point input.
+    # When Va/VT > 1, the same Va runs above threshold and the implied V0/VH shift.
+    va_vt_model = 1.0
+    if va_over_vt is None or not math.isfinite(float(va_over_vt)) or float(va_over_vt) <= 0:
+        va_vt = va_vt_model
+    else:
+        va_vt = float(va_over_vt)
+
+    VT = Va / va_vt                    # Hartree threshold voltage (V)
+    V0 = VT / (2 * r - 1)              # characteristic voltage (V) eq.15.22 form
+    VH = r * r * V0                    # Hull cut-off voltage (V)
+
+    V0_model = Va / (2 * r - 1)
+    VH_model = r * r * V0_model
+    va_vh = Va / VH if VH > 0 else float("nan")
+    va_vh_model = Va / VH_model if VH_model > 0 else float("nan")
+    vt_from_ratio = Va / va_vt if va_vt > 0 else float("nan")
+    vh_from_ratio = Va / va_vh if va_vh > 0 else float("nan")
     lam = C / (f_ghz * 1e9)        # free-space wavelength (m)
 
     # Skin depth and surface resistance in Cu
@@ -494,8 +510,13 @@ def compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_kohm, etaC_pct):
         "eta":   eta,   "etaE": etaE, "etaC": etaC,
         "Zdc":   Zdc,
         "Pdc":   Pdc,   "Va":  Va,   "Ia":  Ia,
-        "r":     r,     "V0":  V0,   "VH":  VH,
-        "VaVH":  Va / VH,
+        "r":     r,     "VT": VT,   "V0":  V0,   "VH":  VH,
+        "VT_ratio": vt_from_ratio,
+        "VaVT":  va_vt,
+        "VaVT_model": va_vt_model,
+        "VH_ratio": vh_from_ratio,
+        "VaVH":  va_vh,
+        "VaVH_model": va_vh_model,
         "lam":   lam,
         "delta_s_um": delta_s * 1e6,
         "Rs_mOhm": Rs * 1e3,
@@ -682,8 +703,10 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
             issues.append(("warn",  f"ωc/ωs = {wc_over_ws:.2f} < 3 (reduced η)"))
         if wc_over_ws > 15:
             issues.append(("warn",  f"ωc/ωs = {wc_over_ws:.2f} > 15 (excessive B)"))
-        if dc["VaVH"] > 0.92:
-            issues.append(("warn",  "Va/VH > 0.92 — near cut-off"))
+        if dc["VaVH"] > 1.15:
+            issues.append(("fatal", "Va/VH > 1.15 — above typical operating range"))
+        elif dc["VaVH"] > 1.05:
+            issues.append(("warn",  "Va/VH > 1.05 — slightly above threshold"))
         if dc["VaVH"] < 0.18:
             issues.append(("warn",  "Va/VH < 0.18 — very low (outside typical range)"))
 
@@ -734,7 +757,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
             (min(msep, 40) if msep > 0 else -200)
             - max(0, (Jc / Jlim - 0.5)) * 25
             - abs(wc_over_ws - 4.5) * 2.5
-            - abs(dc["VaVH"] - 0.72) * 55
+            - abs(dc["VaVH"] - 0.78) * 55
             - temp_penalty
             - (180 if fatal else 0)
         )
@@ -851,17 +874,26 @@ def nd(v, dp=2):
 def print_dc_results(dc, t_id):
     t = TYPES[t_id]
     print_section("DC Operating Point   [Carter §15.2; Collins & Clogston §16]")
-    VaVH_c = green if 0.5 <= dc["VaVH"] <= 0.9 else yellow
+    VaVT_c = green if 0.95 <= dc["VaVT"] <= 1.10 else yellow
+    VaVH_c = green if 0.5 <= dc["VaVH"] <= 1.05 else yellow
     field("Anode voltage Vₐ",          nd(dc["Va"]/1e3, 2),      "kV")
     field("Anode current Iₐ",          nd(dc["Ia"], 2),           "A")
     field("DC input power Pdc",         nd(dc["Pdc"]/1e3, 2),     "kW")
     field("Overall efficiency η",       f"{dc['eta']*100:.1f}",   "%")
     field("Electronic eff. ηₑ = η/ηc", f"{dc['etaE']*100:.1f}",  "%")
     field("Bz/B₀  r = (3−ηₑ)/(2(1−ηₑ))",nd(dc["r"],3),         "[Carter eq.15.49]")
+    field("Hartree threshold voltage V_T", nd(dc["VT"]/1e3, 2),   "kV")
+    field("Vₐ/V_T  [input operating ratio]", VaVT_c(nd(dc["VaVT"], 3)), "")
+    if math.isfinite(dc.get("VaVT_model", float("nan"))) and abs(dc["VaVT_model"] - dc["VaVT"]) > 1e-6:
+        field("Model Vₐ/V_T", nd(dc["VaVT_model"], 3), "")
+        field("V_T implied by ratio", nd(dc.get("VT_ratio", float("nan")) / 1e3, 2), "kV")
     field("Characteristic voltage V₀",  nd(dc["V0"]/1e3, 3),     "kV")
     field("Hull cut-off voltage VH",    nd(dc["VH"]/1e3, 2),     "kV")
-    field("Vₐ/VH  [Collins: 0.50–0.90]",
+    field("Derived Vₐ/VH  [Collins: 0.50–1.05]",
           VaVH_c(nd(dc["VaVH"], 3)),    "")
+    if math.isfinite(dc.get("VaVH_model", float("nan"))) and abs(dc["VaVH_model"] - dc["VaVH"]) > 1e-6:
+        field("Model Vₐ/VH", nd(dc["VaVH_model"], 3), "")
+        field("VH implied by ratio", nd(dc.get("VH_ratio", float("nan")) / 1e3, 2), "kV")
     field("Free-space wavelength λ",    nd(dc["lam"]*1e3, 2),    "mm")
     field("Cu skin depth δₛ",           nd(dc["delta_s_um"], 4), "μm")
     field("Surface resistance Rₛ",      nd(dc["Rs_mOhm"], 4),    "mΩ/□")
@@ -1157,6 +1189,14 @@ def _resolve_design_inputs(raw_params):
     la_exp = _to_float("la_ratio")
     if la_exp is None:
         la_exp = _to_float("la")
+    vavt_exp = _to_float("vavt")
+    if vavt_exp is None:
+        vavt_exp = _to_float("va_over_vt")
+    if vavt_exp is None:
+        # Backward compatibility with older Va/VH field names.
+        vavt_exp = _to_float("vavh")
+    if vavt_exp is None:
+        vavt_exp = _to_float("va_over_vh")
 
     f_ghz = f_exp if f_exp is not None else f_ghz
     P_kw = p_exp if p_exp is not None else P_kw
@@ -1168,6 +1208,7 @@ def _resolve_design_inputs(raw_params):
     fill = fill_exp if fill_exp is not None else fill
 
     la_ratio = la_exp
+    va_over_vt = vavt_exp
 
     t_exp = params.get("type")
     if t_exp:
@@ -1211,6 +1252,8 @@ def _resolve_design_inputs(raw_params):
         raise ValueError("fill must be in [0.1, 0.9]")
     if etaC <= 0 or etaC >= 100:
         raise ValueError("etac must be between 0 and 100")
+    if va_over_vt is not None and va_over_vt <= 0:
+        raise ValueError("vavt must be greater than 0")
 
     return {
         "f_ghz": f_ghz,
@@ -1224,6 +1267,7 @@ def _resolve_design_inputs(raw_params):
         "rp": Rp,
         "fill": fill,
         "la_ratio": la_ratio,
+        "va_over_vt": va_over_vt,
         "preset": preset_id,
         "load_db": db_id,
     }
@@ -1240,7 +1284,14 @@ def compute_design_payload(inputs):
     eta_pct = inputs["eta_override"] if inputs["eta_override"] is not None else t["eta_fn"](f_ghz)
     zdc_k = inputs["zdc_override"] if inputs["zdc_override"] is not None else t["zdc_fn"](f_ghz)
 
-    dc = compute_dc_point(f_ghz, P_kw, eta_pct, zdc_k, inputs["etac_pct"])
+    dc = compute_dc_point(
+        f_ghz,
+        P_kw,
+        eta_pct,
+        zdc_k,
+        inputs["etac_pct"],
+        inputs.get("va_over_vt"),
+    )
     if dc is None:
         raise ValueError("Could not compute a valid DC operating point with the provided parameters.")
 
@@ -1321,6 +1372,7 @@ def compute_design_payload(inputs):
             "rp": inputs["rp"],
             "fill": inputs["fill"],
             "la_ratio": inputs.get("la_ratio"),
+            "va_over_vt": inputs.get("va_over_vt"),
             "preset": inputs["preset"],
             "load_db": inputs["load_db"],
         },
@@ -1331,9 +1383,15 @@ def compute_design_payload(inputs):
             "eta_pct": dc["eta"] * 100,
             "etaE_pct": dc["etaE"] * 100,
             "r": dc["r"],
+            "VT_kV": dc["VT"] / 1e3,
             "V0_kV": dc["V0"] / 1e3,
             "VH_kV": dc["VH"] / 1e3,
+            "Va_over_VT": dc["VaVT"],
+            "Va_over_VT_model": dc["VaVT_model"],
+            "VT_from_ratio_kV": dc["VT_ratio"] / 1e3,
             "Va_over_VH": dc["VaVH"],
+            "Va_over_VH_model": dc["VaVH_model"],
+            "VH_from_ratio_kV": dc["VH_ratio"] / 1e3,
             "lambda_mm": dc["lam"] * 1e3,
             "delta_s_um": dc["delta_s_um"],
             "Rs_mOhm_per_sq": dc["Rs_mOhm"],
@@ -1454,7 +1512,14 @@ def _get_typical_parameter_ranges():
             t = TYPES[t_id]
             eta_pct = inputs["eta_override"] if inputs["eta_override"] is not None else t["eta_fn"](inputs["f_ghz"])
             zdc_k = inputs["zdc_override"] if inputs["zdc_override"] is not None else t["zdc_fn"](inputs["f_ghz"])
-            dc = compute_dc_point(inputs["f_ghz"], inputs["P_kw"], eta_pct, zdc_k, inputs["etac_pct"])
+            dc = compute_dc_point(
+                inputs["f_ghz"],
+                inputs["P_kw"],
+                eta_pct,
+                zdc_k,
+                inputs["etac_pct"],
+                inputs.get("va_over_vt"),
+            )
             if dc is None:
                 continue
             _rows, rec = sweep_vanes(dc, t_id, cath_id, inputs["etac_pct"], inputs["rp"], inputs["fill"])
@@ -1681,6 +1746,8 @@ def build_parser():
                    help="Overall efficiency %% (overrides auto-estimate)")
     p.add_argument("--zdc",   type=float, metavar="kΩ",
                    help="DC impedance Va/Ia in kΩ (overrides auto-estimate)")
+    p.add_argument("--vavt", "--vavh", dest="vavt", type=float, metavar="RATIO",
+                   help="Applied-to-Hartree-threshold ratio Va/VT (legacy alias: --vavh)")
     p.add_argument("--etac",  type=float, default=90.0, metavar="%",
                    help="Circuit efficiency %% (default: 90)")
     p.add_argument("--rp",    type=float, default=2.0, metavar="R'",
@@ -1755,6 +1822,7 @@ def main():
     cath  = args.cath
     eta   = args.eta
     Zdc   = args.zdc
+    va_over_vt = args.vavt
     etaC  = args.etac
     Rp    = args.rp
     fill  = args.fill
@@ -1768,6 +1836,7 @@ def main():
         cath  = cath  or ps.get("cath", "disp")
         eta   = eta   or ps.get("eta")
         Zdc   = Zdc   or ps.get("Zdc")
+        va_over_vt = va_over_vt if va_over_vt is not None else ps.get("va_over_vt")
         etaC  = etaC  if args.etac != 90.0 else ps.get("etaC", 90.0)
         Rp    = Rp    if args.rp   != 2.0  else ps.get("Rp", 2.0)
         fill  = fill  if args.fill != 0.45 else ps.get("fill", 0.45)
@@ -1786,6 +1855,7 @@ def main():
         cath  = cath  or match["cath"]
         eta   = eta   or match["eta"]
         Zdc   = Zdc   or match["Zdc"]
+        va_over_vt = va_over_vt if va_over_vt is not None else match.get("va_over_vt")
         print(bold(cyan(f"\n  Loaded from DB: {match['model']}")))
         print(dim(f"  {match['app']}"))
 
@@ -1814,6 +1884,10 @@ def main():
                                      cast=lambda x: float(x) if x else None)
         if Zdc_in:
             Zdc = Zdc_in
+        vavh_in = interactive_prompt("Applied/Hartree-threshold ratio Va/VT (blank=auto)", None,
+                                     cast=lambda x: float(x) if x else None)
+        if vavh_in:
+            va_over_vt = vavh_in
 
     # Resolve auto-estimated values
     t = TYPES[t_id]
@@ -1828,6 +1902,8 @@ def main():
     print(f"  {'Cathode':>22}  {bold(CATHODES[cath]['label'])}")
     print(f"  {'Efficiency (auto/override)':>22}  {eta_pct:.1f}%  {'(override)' if eta is not None else dim('(auto-estimated)')}")
     print(f"  {'DC impedance (auto/override)':>22}  {Zdc_k:.3g} kΩ  {'(override)' if Zdc is not None else dim('(auto-estimated)')}")
+    if va_over_vt is not None:
+        print(f"  {'Applied/Hartree ratio Va/VT':>22}  {va_over_vt:.3g}")
     print(f"  {'Circuit efficiency ηc':>22}  {etaC:.1f}%")
     print(f"  {'Modified Slater factor R′':>22}  {Rp:.2f}")
     print(f"  {'Fill factor w/p':>22}  {fill:.2f}")
@@ -1835,7 +1911,7 @@ def main():
     print(dim(f"  McDowell IEEE Trans. Plasma Sci. 26 (1998) · Liu et al. MetalMat (2024)"))
 
     # ── Compute ─────────────────────────────────────────────────────────
-    dc = compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_k, etaC)
+    dc = compute_dc_point(f_ghz, P_kw, eta_pct, Zdc_k, etaC, va_over_vt)
     if dc is None:
         print(red("\n  ✗ Could not compute a valid DC operating point."))
         print(red("    Check that efficiency and impedance give a physically realizable Va."))
