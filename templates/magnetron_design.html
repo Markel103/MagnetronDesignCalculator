@@ -674,7 +674,7 @@
                         </label>
                         <label>Duty cycle (0–1)
                             <input name="duty" type="number" step="0.1" min="0" max="1" value="1" placeholder="1.0" />
-                            <div class="help-text">Duty=1 is CW. For pulsed types, duty is used to compute average anode dissipation for Tv (simple duty-corrected thermal estimate).</div>
+                            <div class="help-text">Duty=1 is CW. Duty is used for average anode dissipation (Tv) and for cathode current-density limit: pulsed limit at low duty (<=1%), CW limit at duty=1, with linear interpolation in-between.</div>
                         </label>
                     </div>
 

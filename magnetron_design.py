@@ -263,6 +263,38 @@ CATHODES = {
     },
 }
 
+# Duty-cycle breakpoints for emission-limit blending.
+# Practical pulsed radars are usually low-duty-cycle (often << 10%; many around
+# 0.1–1%), while CW is duty=1.0. We treat duty<=1% as fully pulsed and linearly
+# interpolate to the CW limit up to duty=100%.
+DUTY_PULSED_REF = 0.01
+DUTY_CW_REF = 1.0
+
+
+def cathode_jlim_from_duty(cath: dict, duty_cycle: float) -> float:
+    """Return effective cathode current-density limit (A/cm^2) from duty cycle.
+
+    Interpolation model:
+      - duty <= DUTY_PULSED_REF : use pulsed limit Jpulse
+      - duty >= DUTY_CW_REF     : use CW limit Jcw
+      - in-between              : linear interpolation Jpulse -> Jcw
+    """
+    d = float(duty_cycle)
+    if not math.isfinite(d):
+        d = DUTY_CW_REF
+    d = max(0.0, min(1.0, d))
+
+    Jcw = float(cath["Jcw"])
+    Jpulse = float(cath["Jpulse"])
+
+    if d <= DUTY_PULSED_REF:
+        return Jpulse
+    if d >= DUTY_CW_REF:
+        return Jcw
+
+    alpha = (d - DUTY_PULSED_REF) / (DUTY_CW_REF - DUTY_PULSED_REF)
+    return Jpulse + alpha * (Jcw - Jpulse)
+
 # ─── Magnetron type database ──────────────────────────────────────────────────
 TYPES = {
     "s_cw": {
@@ -538,7 +570,7 @@ def sweep_vanes(dc, type_id, cath_id, etaC_pct, Rp, fill, duty_cycle=1.0, la_rat
     is_cw   = (t["duty"] == "cw")
     duty_cycle = float(duty_cycle) if duty_cycle is not None else (1.0 if is_cw else 0.001)
     duty_cycle = max(0.0, min(1.0, duty_cycle))
-    Jlim    = cath["Jcw"] if is_cw else cath["Jpulse"]
+    Jlim    = cathode_jlim_from_duty(cath, duty_cycle)
 
     if la_ratio is None or not math.isfinite(float(la_ratio)) or float(la_ratio) <= 0:
         la_ratio = 1.5 if type_id == "la" else 0.16
