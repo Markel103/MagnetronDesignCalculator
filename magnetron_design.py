@@ -32,6 +32,7 @@ import json
 import math
 import sys
 import os
+from pathlib import Path
 from functools import lru_cache
 from datetime import datetime, timezone
 
@@ -182,7 +183,7 @@ def _vane_tip_temperature_K(Pa_W: float, Nv: int, t_vane_m: float, La_m: float) 
     return T_COOL_K + (Pa_W * L_TH_M) / (Av_m2 * COPPER_KAPPA)
 
 # ─── ANSI colour helpers ──────────────────────────────────────────────────────
-USE_COLOR = sys.stdout.isatty()
+USE_COLOR = bool(getattr(sys, "stdout", None) and sys.stdout.isatty())
 
 def _c(code, text):
     return f"\033[{code}m{text}\033[0m" if USE_COLOR else text
@@ -1593,6 +1594,11 @@ def create_app():
     if Flask is None:
         raise RuntimeError("Flask is not installed. Install it with: pip install flask")
 
+    def _resource_base_dir():
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS)
+        return Path(__file__).resolve().parent
+
     def _json_sanitize(obj):
         """Recursively convert non-finite floats (NaN/±Inf) to None for strict JSON."""
         if obj is None:
@@ -1607,7 +1613,48 @@ def create_app():
             return [_json_sanitize(v) for v in obj]
         return obj
 
-    app = Flask(__name__)
+    def _ui_prefs_path() -> Path:
+        appdata = os.getenv("APPDATA")
+        base = Path(appdata) if appdata else (Path.home() / ".config")
+        return base / "MagnetronDesignCalculator" / "ui_prefs.json"
+
+    def _sanitize_ui_prefs(raw: dict) -> dict:
+        allowed = {
+            "freq", "power", "type", "cath", "eta", "zdc", "etac", "rp",
+            "fill", "preset", "la_ratio", "duty", "load_db", "vavt",
+        }
+        out = {}
+        for k, v in (raw or {}).items():
+            if k not in allowed:
+                continue
+            if v is None:
+                continue
+            s = str(v)
+            if len(s) > 128:
+                continue
+            out[k] = s
+        return out
+
+    def _load_ui_prefs() -> dict:
+        path = _ui_prefs_path()
+        if not path.exists():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return _sanitize_ui_prefs(data)
+
+    def _save_ui_prefs(values: dict) -> dict:
+        path = _ui_prefs_path()
+        sanitized = _sanitize_ui_prefs(values)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(sanitized, ensure_ascii=True, indent=2), encoding="utf-8")
+        return sanitized
+
+    app = Flask(__name__, template_folder=str(_resource_base_dir() / "templates"))
 
     # UI template moved to templates/magnetron_design.html
 
@@ -1739,6 +1786,29 @@ def create_app():
     @app.get("/reference-db")
     def reference_db():
         return jsonify({"reference_magnetrons": REFERENCE_MAGNETRONS})
+
+    @app.route("/ui-prefs", methods=["GET", "POST", "DELETE"])
+    def ui_prefs():
+        try:
+            if request.method == "GET":
+                return jsonify({"values": _load_ui_prefs()})
+
+            if request.method == "DELETE":
+                path = _ui_prefs_path()
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+                return jsonify({"ok": True})
+
+            body = request.get_json(silent=True) or {}
+            values = body.get("values", body)
+            if not isinstance(values, dict):
+                return jsonify({"error": "Invalid preferences payload"}), 400
+            saved = _save_ui_prefs(values)
+            return jsonify({"ok": True, "values": saved})
+        except Exception as exc:  # pragma: no cover - defensive API guard
+            return jsonify({"error": "Preferences storage error", "detail": str(exc)}), 500
 
     @app.route("/calculate", methods=["GET", "POST"])
     def calculate():

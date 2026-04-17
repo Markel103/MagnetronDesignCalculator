@@ -867,78 +867,88 @@
         addOptions(cathSelect, cathodes, (k, v) => `${k} - ${v.label}`, 'note');
         addOptions(presetSelect, presets, (k, v) => `${k} - ${v.desc}`);
 
-        const STORAGE_KEYS = {
-            type: "magnetron_design:type",
-            cath: "magnetron_design:cath",
-            eta: "magnetron_design:eta",
-            zdc: "magnetron_design:zdc",
-            vavt: "magnetron_design:vavt",
-        };
+        const PERSISTED_FIELDS = [
+            "freq", "power", "type", "cath", "eta", "zdc", "etac", "rp",
+            "fill", "preset", "la_ratio", "duty", "load_db", "vavt"
+        ];
 
-        function saveSelectToStorage(key, selectEl) {
+        let savePrefsTimer = null;
+
+        function collectPersistedValues() {
+            const values = {};
+            PERSISTED_FIELDS.forEach((name) => {
+                if (!form[name]) return;
+                values[name] = String(form[name].value ?? "");
+            });
+            return values;
+        }
+
+        function applyPersistedValues(values) {
+            const restored = new Set();
+            if (!values || typeof values !== "object") return restored;
+
+            PERSISTED_FIELDS.forEach((name) => {
+                if (!(name in values)) return;
+                const el = form[name];
+                if (!el) return;
+                const v = String(values[name] ?? "");
+
+                if (el.tagName === "SELECT") {
+                    const hasOption = Array.from(el.options).some((o) => o.value === v);
+                    if (!hasOption) return;
+                }
+
+                el.value = v;
+                if (v !== "") {
+                    restored.add(name);
+                }
+            });
+
+            return restored;
+        }
+
+        async function loadPersistedValues() {
             try {
-                const v = selectEl.value || "";
-                localStorage.setItem(key, v);
+                const res = await fetch("/ui-prefs");
+                if (!res.ok) return new Set();
+                const data = await res.json();
+                return applyPersistedValues(data && data.values ? data.values : {});
             } catch {
-                // ignore (storage blocked/disabled)
+                return new Set();
             }
         }
 
-        function clearStoredSelect(key) {
+        async function savePersistedValues() {
             try {
-                localStorage.removeItem(key);
+                await fetch("/ui-prefs", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ values: collectPersistedValues() }),
+                });
             } catch {
-                // ignore
+                // ignore persistence failures
             }
         }
 
-        function saveInputToStorage(key, inputEl) {
+        function schedulePersistedSave() {
+            if (savePrefsTimer) {
+                clearTimeout(savePrefsTimer);
+            }
+            savePrefsTimer = setTimeout(() => {
+                savePersistedValues();
+            }, 180);
+        }
+
+        async function clearPersistedValues() {
             try {
-                const v = (inputEl && inputEl.value !== undefined) ? String(inputEl.value) : "";
-                localStorage.setItem(key, v);
+                await fetch("/ui-prefs", { method: "DELETE" });
             } catch {
-                // ignore
+                // ignore persistence failures
             }
         }
 
-        function restoreInputFromStorage(key, inputEl) {
-            try {
-                const v = localStorage.getItem(key);
-                if (v === null || v === undefined || v === "") return false;
-                if (!inputEl) return false;
-                inputEl.value = v;
-                return true;
-            } catch {
-                return false;
-            }
-        }
-
-        function restoreSelectFromStorage(key, selectEl) {
-            try {
-                const v = localStorage.getItem(key);
-                if (!v) return false;
-                const hasOption = Array.from(selectEl.options).some(o => o.value === v);
-                if (!hasOption) return false;
-                selectEl.value = v;
-                return true;
-            } catch {
-                return false;
-            }
-        }
-
-        // Restore persisted selections after options are populated.
-        restoreSelectFromStorage(STORAGE_KEYS.type, typeSelect);
-        restoreSelectFromStorage(STORAGE_KEYS.cath, cathSelect);
-
-        const etaRestored = restoreInputFromStorage(STORAGE_KEYS.eta, form.eta);
-        const zdcRestored = restoreInputFromStorage(STORAGE_KEYS.zdc, form.zdc);
-        const vavtRestored = restoreInputFromStorage(STORAGE_KEYS.vavt, form.vavt);
-
-        cathSelect.addEventListener("change", () => saveSelectToStorage(STORAGE_KEYS.cath, cathSelect));
-
-        form.eta.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.eta, form.eta));
-        form.zdc.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.zdc, form.zdc));
-        form.vavt.addEventListener("input", () => saveInputToStorage(STORAGE_KEYS.vavt, form.vavt));
+        form.addEventListener("input", schedulePersistedSave);
+        form.addEventListener("change", schedulePersistedSave);
 
         function defaultLaRatioForType(typeId) {
             return (String(typeId || "") === "la") ? 1.5 : 0.16;
@@ -2439,11 +2449,7 @@
 
         clearBtn.addEventListener("click", () => {
             form.reset();
-            clearStoredSelect(STORAGE_KEYS.type);
-            clearStoredSelect(STORAGE_KEYS.cath);
-            clearStoredSelect(STORAGE_KEYS.eta);
-            clearStoredSelect(STORAGE_KEYS.zdc);
-            clearStoredSelect(STORAGE_KEYS.vavt);
+            clearPersistedValues();
             if (selectedSweepRow) {
                 selectedSweepRow.classList.remove("selected");
                 selectedSweepRow = null;
@@ -2524,11 +2530,7 @@
             form.load_db.value = "";
 
             updateLaRatioAutofill(true);
-
-            saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
-            saveSelectToStorage(STORAGE_KEYS.cath, cathSelect);
-            saveInputToStorage(STORAGE_KEYS.eta, form.eta);
-            saveInputToStorage(STORAGE_KEYS.zdc, form.zdc);
+            schedulePersistedSave();
             return true;
         }
 
@@ -2554,15 +2556,13 @@
                 if (myReq !== etaZdcReqId) return;
                 if (data && data.eta !== undefined) form.eta.value = data.eta;
                 if (data && data.zdc !== undefined) form.zdc.value = data.zdc;
-                saveInputToStorage(STORAGE_KEYS.eta, form.eta);
-                saveInputToStorage(STORAGE_KEYS.zdc, form.zdc);
+                schedulePersistedSave();
             } catch {
                 // ignore network errors
             }
         }
 
         typeSelect.addEventListener("change", () => {
-            saveSelectToStorage(STORAGE_KEYS.type, typeSelect);
             updateEtaZdc();
             updateLaRatioAutofill(false);
         });
@@ -2570,13 +2570,18 @@
         // Those fields are user inputs/overrides; only selecting a magnetron type should
         // auto-fill defaults.
 
-        // Ensure la_ratio has a sensible default on initial load.
-        updateLaRatioAutofill(false);
+        async function initializeFormState() {
+            const restored = await loadPersistedValues();
+            // Ensure la_ratio has a sensible default on initial load.
+            updateLaRatioAutofill(false);
 
-        // Only auto-estimate on load if the user didn't already have stored values.
-        if (!(etaRestored || zdcRestored)) {
-            updateEtaZdc();
+            // Only auto-estimate if eta/zdc were not restored.
+            if (!(restored.has("eta") || restored.has("zdc"))) {
+                updateEtaZdc();
+            }
         }
+
+        initializeFormState();
 
         sampleBtn.addEventListener("click", () => {
             const selectedPreset = form.preset.value;

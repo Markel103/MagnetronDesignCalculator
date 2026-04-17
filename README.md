@@ -5,6 +5,8 @@ Physics-based magnetron design and exploration tool with both:
 - a **CLI** (interactive prompts and preset-driven runs), and
 - a **Flask web UI** (single-page interface served from a Jinja template).
 
+There is also a Windows desktop launcher (`magnetron_desktop.pyw`) that runs the same Flask UI locally and shows it inside a desktop window instead of the external browser.
+
 It implements a practical design workflow combining:
 
 - Carter (2018) magnetron design equations (operating point, geometry, mode separation, coupling/Q heuristics, etc.)
@@ -43,7 +45,7 @@ Notes:
 - End-to-end operating-point and geometry calculations with vane-count sweeps.
 - Collins/Clogston reduced parameters: \(b, v, i, g, p\) computed using Collins Eq. (25)–(26).
 - Web UI served at `/ui` with:
-  - Local persistence (`localStorage`) for type/cathode and key overrides (\(\eta\), \(Z_{dc}\), \(V_a/V_T\), duty cycle).
+  - Persistent form values across restarts via `/ui-prefs` (stored on disk in `%APPDATA%/MagnetronDesignCalculator/ui_prefs.json` on Windows).
   - A collapsible formulas section rendered in **LaTeX-style** using **KaTeX**.
   - Typical ranges (10th–90th percentile) derived from the built-in reference database.
 - JSON API endpoints for automation (`/calculate`, `/types`, `/cathodes`, etc.).
@@ -52,18 +54,30 @@ Notes:
 
 - `magnetron_design.py` — all physics, CLI, reference database, and Flask server.
 - `templates/magnetron_design.html` — the web UI template (HTML + JS + KaTeX auto-render).
+- `magnetron_desktop.pyw` — desktop launcher using pywebview (runs Flask locally and embeds `/ui` in a native window).
 - `OpenFlask.bat` — convenience launcher (Windows).
+- `MagnetronDesignCalculator.spec` — PyInstaller spec file for desktop executable builds.
 
 ## Requirements
 
 - Python 3.9+ (3.10/3.11 recommended)
 - Optional but recommended (for the UI/API):
   - `flask`
+- Optional (for desktop window launcher):
+  - `pywebview`
+- Optional (for building a one-file Windows executable):
+  - `pyinstaller`
 
 Install Flask:
 
 ```bash
 pip install flask
+```
+
+Desktop extras:
+
+```bash
+pip install pywebview pyinstaller
 ```
 
 ## Run (CLI)
@@ -102,6 +116,24 @@ Then open:
 - API root: http://127.0.0.1:5000/
 - Health: http://127.0.0.1:5000/health
 
+## Run (Desktop window)
+
+Install the desktop wrapper dependency:
+
+```bash
+pip install pywebview
+```
+
+Launch the desktop window:
+
+```bash
+python magnetron_desktop.pyw
+```
+
+This starts Flask locally and opens the calculator in a native desktop webview window.
+
+Desktop input persistence: the values entered in the form are automatically saved and restored on next launch.
+
 ### API usage example
 
 GET:
@@ -125,6 +157,19 @@ curl -X POST http://127.0.0.1:5000/calculate \
 - The cathode current-density limit is now duty-dependent: low-duty pulsed operation uses the pulsed limit, CW uses the CW limit, and intermediate duty cycles are linearly interpolated.
 - Pulsed magnetrons are commonly operated at very low duty cycle; the current model uses 1% as the pulsed reference point and blends to CW at 100% duty.
 - The UI and API still accept the legacy `vavh` name, but `vavt` is the current input.
+- UI preference persistence endpoint: `GET/POST/DELETE /ui-prefs`.
+
+## Build desktop executable (Windows)
+
+Use PyInstaller from the project root:
+
+```bash
+pyinstaller --noconfirm --clean --onefile --windowed --name MagnetronDesignCalculator --add-data "templates;templates" magnetron_desktop.pyw
+```
+
+Output executable:
+
+- `dist/MagnetronDesignCalculator.exe`
 
 ## References
 
